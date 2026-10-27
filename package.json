@@ -1,0 +1,34 @@
+{
+  "name": "claude-gear-preset",
+  "version": "0.1.0",
+  "description": "Bundle MCP servers, skills, and slash commands into named presets, then launch focused Claude Code sessions in parallel.",
+  "type": "module",
+  "bin": {
+    "ccgear": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "node --test test/*.test.js",
+    "prepare": "npm run build"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "mcp",
+    "skills",
+    "cli",
+    "preset"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}
