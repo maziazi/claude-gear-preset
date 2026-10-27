@@ -15,7 +15,9 @@ const MAX_TOPIC = 40;
  * how Claude Code namespaces projects.
  */
 export function transcriptPath(sessionId: string, cwd: string): string {
-  const slug = cwd.replace(/[/\\]/g, "-");
+  // The drive colon in a Windows path cannot appear in a directory name, so
+  // it is folded into the same separator treatment.
+  const slug = cwd.replace(/[/\\:]/g, "-");
   return join(homedir(), ".claude", "projects", slug, `${sessionId}.jsonl`);
 }
 
@@ -95,6 +97,12 @@ export function formatTitle(preset: string, prompt: string | null): string {
   return topic ? `${preset} - ${topic}` : preset;
 }
 
+export interface TitleWatcherOptions {
+  write?: (text: string) => void;
+  /** Overrides where the transcript is read from; used by tests. */
+  path?: string;
+}
+
 /**
  * Keep the terminal tab named after what the session is about.
  *
@@ -108,9 +116,10 @@ export function startTitleWatcher(
   preset: string,
   sessionId: string,
   cwd: string,
-  write: (text: string) => void = (text) => process.stdout.write(text),
+  options: TitleWatcherOptions = {},
 ): () => void {
-  const path = transcriptPath(sessionId, cwd);
+  const write = options.write ?? ((text: string) => process.stdout.write(text));
+  const path = options.path ?? transcriptPath(sessionId, cwd);
 
   // Settled once the first prompt is in: from then on the tab keeps that name
   // for the rest of the session.

@@ -97,21 +97,27 @@ test("firstUserPrompt returns null before anything is typed", () => {
   assert.equal(firstUserPrompt(line({ type: "assistant" })), null);
 });
 
-test("the watcher repeats one title instead of tracking the newest prompt", async () => {
-  const { mkdtempSync, writeFileSync, mkdirSync } = await import("node:fs");
-  const { tmpdir, homedir } = await import("node:os");
-  const { join, dirname } = await import("node:path");
+test("transcriptPath folds a Windows drive colon into the slug", () => {
+  // A colon cannot appear in a directory name, so leaving it in produced a
+  // path Windows refuses to create.
+  const path = transcriptPath("s1", "C:\\Users\\me\\Code");
+  assert.ok(!path.slice(2).includes(":"), `colon left in slug: ${path}`);
+});
 
-  // startTitleWatcher derives its path from homedir, so write a transcript
-  // where it will actually look.
-  const sessionId = `test-${Date.now()}`;
-  const cwd = mkdtempSync(join(tmpdir(), "ccgear-title-cwd-"));
-  const path = transcriptPath(sessionId, cwd);
-  mkdirSync(dirname(path), { recursive: true });
+test("the watcher repeats one title instead of tracking the newest prompt", async () => {
+  const { mkdtempSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+
+  const dir = mkdtempSync(join(tmpdir(), "ccgear-title-"));
+  const path = join(dir, "session.jsonl");
   writeFileSync(path, userEntry("opening question"));
 
   const written = [];
-  const stop = startTitleWatcher("dev", sessionId, cwd, (t) => written.push(t));
+  const stop = startTitleWatcher("dev", "unused", dir, {
+    path,
+    write: (t) => written.push(t),
+  });
   await new Promise((r) => setTimeout(r, 2300));
 
   // A later prompt must not change what is already on the tab.
@@ -122,4 +128,27 @@ test("the watcher repeats one title instead of tracking the newest prompt", asyn
   assert.ok(written.length >= 2, "title must be re-asserted, not written once");
   assert.equal(new Set(written).size, 1, "every write must carry the same title");
   assert.match(written[0], /dev - opening question/);
+});
+
+test("the watcher stays quiet until the first prompt exists", async () => {
+  const { mkdtempSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+
+  const dir = mkdtempSync(join(tmpdir(), "ccgear-title-empty-"));
+  const path = join(dir, "session.jsonl");
+
+  const written = [];
+  const stop = startTitleWatcher("dev", "unused", dir, {
+    path,
+    write: (t) => written.push(t),
+  });
+  await new Promise((r) => setTimeout(r, 1300));
+  assert.deepEqual(written, [], "nothing to name the tab after yet");
+
+  writeFileSync(path, userEntry("now we have one"));
+  await new Promise((r) => setTimeout(r, 1300));
+  stop();
+  assert.ok(written.length >= 1);
+  assert.match(written[0], /dev - now we have one/);
 });

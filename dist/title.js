@@ -12,7 +12,9 @@ const MAX_TOPIC = 40;
  * how Claude Code namespaces projects.
  */
 export function transcriptPath(sessionId, cwd) {
-    const slug = cwd.replace(/[/\\]/g, "-");
+    // The drive colon in a Windows path cannot appear in a directory name, so
+    // it is folded into the same separator treatment.
+    const slug = cwd.replace(/[/\\:]/g, "-");
     return join(homedir(), ".claude", "projects", slug, `${sessionId}.jsonl`);
 }
 /**
@@ -96,8 +98,9 @@ export function formatTitle(preset, prompt) {
  * itself. OSC 0 only renames the window, so interleaving it with Claude's
  * interface is safe.
  */
-export function startTitleWatcher(preset, sessionId, cwd, write = (text) => process.stdout.write(text)) {
-    const path = transcriptPath(sessionId, cwd);
+export function startTitleWatcher(preset, sessionId, cwd, options = {}) {
+    const write = options.write ?? ((text) => process.stdout.write(text));
+    const path = options.path ?? transcriptPath(sessionId, cwd);
     // Settled once the first prompt is in: from then on the tab keeps that name
     // for the rest of the session.
     let title = null;
