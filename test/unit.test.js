@@ -171,7 +171,13 @@ test("parseLaunchArgs forwards everything it does not claim", () => {
 });
 
 test("parseLaunchArgs handles no arguments at all", () => {
-  assert.deepEqual(parseLaunchArgs([]), { passthrough: [], warm: "auto" });
+  assert.deepEqual(parseLaunchArgs([]), { passthrough: [], warm: "auto", title: true });
+});
+
+test("--no-title opts out of renaming the tab without reaching claude", () => {
+  const parsed = parseLaunchArgs(["--no-title", "--model", "opus"]);
+  assert.equal(parsed.title, false);
+  assert.deepEqual(parsed.passthrough, ["--model", "opus"]);
 });
 
 test("buildBundle merges inline servers over global aliases", () => {

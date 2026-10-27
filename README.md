@@ -80,8 +80,9 @@ them. They contribute nothing to the context, so there is no reason to make
 you choose. Plugins that also bring skills, commands, or MCP servers stay
 opt-in through `enabledPlugins`.
 
-Tabs are named `<preset> - <topic>` as you work, rather than every one of them
-reading `✳ Claude Code`.
+Tabs are named `<preset> - <first prompt>` and keep that name for the session,
+rather than every one of them reading `✳ Claude Code`. Opt out with
+`--no-title`.
 
 ## Preset format
 

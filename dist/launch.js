@@ -29,7 +29,7 @@ export function buildArgs(name, bundle, passthrough) {
     return args.concat(passthrough);
 }
 /** Flags ccgear acts on itself rather than handing to claude. */
-const CCGEAR_LAUNCH_FLAGS = new Set(["--warm", "--no-warm"]);
+const CCGEAR_LAUNCH_FLAGS = new Set(["--warm", "--no-warm", "--no-title"]);
 /**
  * Split launch arguments into ccgear's own flags and claude's.
  *
@@ -46,14 +46,15 @@ export function parseLaunchArgs(args) {
     return {
         passthrough: args.filter((arg) => !CCGEAR_LAUNCH_FLAGS.has(arg)),
         warm,
+        title: !args.includes("--no-title"),
     };
 }
-export function launch(name, preset, passthrough) {
+export function launch(name, preset, passthrough, title = true) {
     const bundle = buildBundle(name, preset, discoverMcpServers());
     // Naming the session ourselves is what makes the transcript findable, and
     // so the tab title trackable. If the caller set one, theirs wins.
     const hasOwnSessionId = passthrough.includes("--session-id");
-    const sessionId = hasOwnSessionId ? null : randomUUID();
+    const sessionId = hasOwnSessionId || !title ? null : randomUUID();
     const withSession = sessionId ? [...passthrough, "--session-id", sessionId] : passthrough;
     const args = buildArgs(name, bundle, withSession);
     const stopTitle = sessionId

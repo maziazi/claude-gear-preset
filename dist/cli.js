@@ -32,6 +32,9 @@ Servers are connected to once, the first time a preset uses them, so the
 session does not start before they are ready. Force it with --warm, or skip
 it with --no-warm.
 
+The tab is named "<preset> - <first prompt>" and keeps that name. Turn it off
+with --no-title.
+
 Presets live in ${GEAR_DIR} (override with $CCGEAR_DIR).
 Extra args after the preset name are passed straight to claude.`;
 function die(message) {
@@ -387,7 +390,7 @@ function resolveServers(preset) {
     }
     return servers;
 }
-async function cmdLaunch(name, passthrough, warm) {
+async function cmdLaunch(name, passthrough, warm, title) {
     if (!presetExists(name))
         notFound(name);
     let preset;
@@ -426,7 +429,7 @@ async function cmdLaunch(name, passthrough, warm) {
         // punish the whole session for one endpoint being down.
         markWarmed(name, print);
     }
-    launch(name, preset, passthrough);
+    launch(name, preset, passthrough, title);
 }
 async function main(argv) {
     const [command, ...rest] = argv;
@@ -470,8 +473,8 @@ async function main(argv) {
             return cmdRemove(requireName(args, "remove"));
         default: {
             // Everything ccgear does not claim for itself belongs to claude.
-            const { passthrough, warm } = parseLaunchArgs(rest);
-            return cmdLaunch(command, passthrough, warm);
+            const { passthrough, warm, title } = parseLaunchArgs(rest);
+            return cmdLaunch(command, passthrough, warm, title);
         }
     }
 }

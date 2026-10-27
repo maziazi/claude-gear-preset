@@ -15,6 +15,51 @@ export function transcriptPath(sessionId, cwd) {
     const slug = cwd.replace(/[/\\]/g, "-");
     return join(homedir(), ".claude", "projects", slug, `${sessionId}.jsonl`);
 }
+/**
+ * Pull the text of the first thing the user actually typed.
+ *
+ * The first prompt is what the session is about; later ones wander. Naming the
+ * tab after the newest message would rewrite it mid-conversation, which makes
+ * a row of tabs unreadable precisely when there are enough of them to matter.
+ */
+export function firstUserPrompt(transcript) {
+    for (const line of transcript.split("\n")) {
+        if (!line.trim())
+            continue;
+        let entry;
+        try {
+            entry = JSON.parse(line);
+        }
+        catch {
+            continue;
+        }
+        if (entry.type !== "user")
+            continue;
+        const text = extractText(entry.message?.content);
+        if (text)
+            return text;
+    }
+    return null;
+}
+/** Text of a user entry, or empty when it is not something the user typed. */
+function extractText(content) {
+    let text = "";
+    if (typeof content === "string") {
+        text = content;
+    }
+    else if (Array.isArray(content)) {
+        text = content
+            .filter((block) => typeof block === "object" &&
+            block !== null &&
+            block.type === "text")
+            .map((block) => block.text)
+            .join(" ");
+    }
+    text = text.trim();
+    // Tool results and injected reminders arrive as user entries too; they open
+    // with a tag and are not what the tab should be named after.
+    return text.startsWith("<") ? "" : text;
+}
 /** Pull the text of the most recent thing the user actually typed. */
 export function latestUserPrompt(transcript) {
     let latest = null;
@@ -30,26 +75,9 @@ export function latestUserPrompt(transcript) {
         }
         if (entry.type !== "user")
             continue;
-        const message = entry.message;
-        const content = message?.content;
-        let text = "";
-        if (typeof content === "string") {
-            text = content;
-        }
-        else if (Array.isArray(content)) {
-            text = content
-                .filter((block) => typeof block === "object" &&
-                block !== null &&
-                block.type === "text")
-                .map((block) => block.text)
-                .join(" ");
-        }
-        text = text.trim();
-        // Tool results and injected reminders arrive as user entries too; they
-        // open with a tag and are not what the tab should be named after.
-        if (!text || text.startsWith("<"))
-            continue;
-        latest = text;
+        const text = extractText(entry.message?.content);
+        if (text)
+            latest = text;
     }
     return latest;
 }
@@ -70,20 +98,26 @@ export function formatTitle(preset, prompt) {
  */
 export function startTitleWatcher(preset, sessionId, cwd, write = (text) => process.stdout.write(text)) {
     const path = transcriptPath(sessionId, cwd);
-    let lastTitle = "";
+    // Settled once the first prompt is in: from then on the tab keeps that name
+    // for the rest of the session.
+    let title = null;
     const tick = () => {
-        if (!existsSync(path))
-            return;
-        let title;
-        try {
-            title = formatTitle(preset, latestUserPrompt(readFileSync(path, "utf8")));
+        if (title === null) {
+            if (!existsSync(path))
+                return;
+            let prompt;
+            try {
+                prompt = firstUserPrompt(readFileSync(path, "utf8"));
+            }
+            catch {
+                return;
+            }
+            if (!prompt)
+                return;
+            title = formatTitle(preset, prompt);
         }
-        catch {
-            return;
-        }
-        if (title === lastTitle)
-            return;
-        lastTitle = title;
+        // Written repeatedly, not once: Claude Code sets its own title at every
+        // turn, so a single write would show for a moment and then be replaced.
         write(`\x1b]0;${title}\x07`);
     };
     const timer = setInterval(tick, POLL_MS);

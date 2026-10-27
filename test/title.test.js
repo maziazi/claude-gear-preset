@@ -3,9 +3,8 @@ import assert from "node:assert/strict";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-const { transcriptPath, latestUserPrompt, formatTitle } = await import(
-  "../dist/title.js"
-);
+const { transcriptPath, latestUserPrompt, firstUserPrompt, formatTitle, startTitleWatcher } =
+  await import("../dist/title.js");
 
 const line = (obj) => JSON.stringify(obj);
 const userEntry = (content) => line({ type: "user", message: { content } });
@@ -77,4 +76,50 @@ test("formatTitle truncates so a tab label stays readable", () => {
   const title = formatTitle("dev", "x".repeat(200));
   assert.ok(title.length < 60, `title too long: ${title.length}`);
   assert.ok(title.startsWith("dev - "));
+});
+
+test("firstUserPrompt names the session after what it opened with", () => {
+  // The tab must not rename itself as the conversation moves on.
+  const transcript = [userEntry("the original ask"), userEntry("a later aside")].join("\n");
+  assert.equal(firstUserPrompt(transcript), "the original ask");
+});
+
+test("firstUserPrompt skips reminders that precede the real first prompt", () => {
+  const transcript = [
+    userEntry("<system-reminder>context</system-reminder>"),
+    userEntry("the real opening"),
+  ].join("\n");
+  assert.equal(firstUserPrompt(transcript), "the real opening");
+});
+
+test("firstUserPrompt returns null before anything is typed", () => {
+  assert.equal(firstUserPrompt(""), null);
+  assert.equal(firstUserPrompt(line({ type: "assistant" })), null);
+});
+
+test("the watcher repeats one title instead of tracking the newest prompt", async () => {
+  const { mkdtempSync, writeFileSync, mkdirSync } = await import("node:fs");
+  const { tmpdir, homedir } = await import("node:os");
+  const { join, dirname } = await import("node:path");
+
+  // startTitleWatcher derives its path from homedir, so write a transcript
+  // where it will actually look.
+  const sessionId = `test-${Date.now()}`;
+  const cwd = mkdtempSync(join(tmpdir(), "ccgear-title-cwd-"));
+  const path = transcriptPath(sessionId, cwd);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, userEntry("opening question"));
+
+  const written = [];
+  const stop = startTitleWatcher("dev", sessionId, cwd, (t) => written.push(t));
+  await new Promise((r) => setTimeout(r, 2300));
+
+  // A later prompt must not change what is already on the tab.
+  writeFileSync(path, [userEntry("opening question"), userEntry("unrelated follow-up")].join("\n"));
+  await new Promise((r) => setTimeout(r, 1200));
+  stop();
+
+  assert.ok(written.length >= 2, "title must be re-asserted, not written once");
+  assert.equal(new Set(written).size, 1, "every write must carry the same title");
+  assert.match(written[0], /dev - opening question/);
 });

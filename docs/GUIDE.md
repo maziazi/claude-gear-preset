@@ -172,15 +172,18 @@ A plugin that also brings skills, commands, agents, or MCP servers is a
 toolkit, not an integration, and stays opt-in per preset through
 `enabledPlugins`.
 
-The tab is also renamed as you work:
+Tabs are named after the preset and the question that opened the session:
 
 ```
 dev - pengembangan ccgear
 ```
 
-The preset name comes first, then what you last asked about. Claude Code on
-its own titles every tab `✳ Claude Code`, which is no help once several are
-open.
+The name is taken from your first prompt and then left alone, so a tab you
+recognise at 9am still reads the same at noon. Claude Code titles every tab
+`✳ Claude Code` on its own, which is no help once several are open, and it
+re-applies that title on each turn — so `ccgear` keeps re-asserting its own.
+Renaming a tab by hand in a terminal that pins manual names still wins; pass
+`--no-title` to stay out of the way entirely.
 
 ## Bundling tools into a preset
 
