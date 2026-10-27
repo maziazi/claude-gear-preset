@@ -6,6 +6,7 @@ import { diagnose, formatIssues } from "./doctor.js";
 import { checkEnvironment } from "./environment.js";
 import { openEditor } from "./editor.js";
 import { launch } from "./launch.js";
+import { askText, multiSelect, isInteractive } from "./prompt.js";
 import {
   GEAR_DIR,
   presetPath,
@@ -28,8 +29,8 @@ const HELP = `ccgear - bundle MCP servers, skills, and slash commands into named
 Usage:
   ccgear list                 List presets
   ccgear show <name>          Show a preset's contents
-  ccgear create <name>        Create a preset (opens your editor, pre-filled)
-  ccgear edit <name>          Edit an existing preset
+  ccgear create <name>        Create a preset (interactive; --editor for raw JSON)
+  ccgear edit <name>          Edit a preset (interactive; --editor for raw JSON)
   ccgear doctor <name>        Check a preset for missing servers/skills/commands
   ccgear remove <name>        Delete a preset
   ccgear version              Print the installed version
@@ -133,30 +134,98 @@ function cmdShow(name: string): void {
   console.log("\n(bundled) entries travel with the preset — no global install needed.");
 }
 
-function cmdCreate(name: string): void {
+/**
+ * Walk through the discovered tools as checkbox lists.
+ *
+ * Nothing starts selected: picking the handful a context needs is less work
+ * than unpicking everything it does not.
+ */
+async function buildInteractively(current: Preset): Promise<Preset> {
+  const found = discoverAll();
+
+  const description = await askText(
+    `Description${current.description ? ` [${current.description}]` : ""}:`,
+    { fallback: current.description ?? "" },
+  );
+
+  const enabledMcpjsonServers = await multiSelect({
+    title: "MCP servers",
+    choices: [...found.mcpServers.keys()].sort(),
+    selected: current.enabledMcpjsonServers,
+  });
+
+  const enabledPlugins = await multiSelect({
+    title: "Plugins",
+    choices: found.plugins,
+    selected: current.enabledPlugins,
+  });
+
+  const enabledSkills = await multiSelect({
+    title: "Skills",
+    choices: found.skills,
+    selected: current.enabledSkills,
+  });
+
+  const enabledCommands = await multiSelect({
+    title: "Slash commands",
+    choices: found.commands,
+    selected: current.enabledCommands,
+  });
+
+  return {
+    description,
+    // Inline definitions are not part of the checkbox lists, so carry them
+    // through untouched rather than dropping them on edit.
+    ...(current.mcpServers ? { mcpServers: current.mcpServers } : {}),
+    enabledMcpjsonServers,
+    enabledPlugins,
+    enabledSkills,
+    enabledCommands,
+  };
+}
+
+async function cmdCreate(name: string, useEditor: boolean): Promise<void> {
   const invalid = validateName(name);
   if (invalid) die(invalid);
   if (presetExists(name)) {
     die(`Preset '${name}' already exists. Edit it with: ccgear edit ${name}`);
   }
 
-  const found = discoverAll();
-  const template: Preset = {
-    description: "",
-    enabledMcpjsonServers: [...found.mcpServers.keys()].sort(),
-    enabledPlugins: found.plugins,
-    enabledSkills: found.skills,
-    enabledCommands: found.commands,
-  };
+  if (useEditor || !isInteractive()) {
+    const found = discoverAll();
+    savePreset(name, {
+      description: "",
+      enabledMcpjsonServers: [...found.mcpServers.keys()].sort(),
+      enabledPlugins: found.plugins,
+      enabledSkills: found.skills,
+      enabledCommands: found.commands,
+    });
+    console.log(
+      `Pre-filled '${name}' with everything discovered — remove what you don't need.`,
+    );
+    editAndValidate(name);
+    return;
+  }
 
-  savePreset(name, template);
-  console.log(`Pre-filled '${name}' with everything discovered — remove what you don't need.`);
-  editAndValidate(name);
+  const preset = await buildInteractively({});
+  savePreset(name, preset);
+  console.log(`\nSaved to ${presetPath(name)}`);
+  reportDiagnosis(name, preset);
+  console.log(`\nLaunch it with: ccgear ${name}`);
 }
 
-function cmdEdit(name: string): void {
+async function cmdEdit(name: string, useEditor: boolean): Promise<void> {
   if (!presetExists(name)) notFound(name);
-  editAndValidate(name);
+
+  if (useEditor || !isInteractive()) {
+    editAndValidate(name);
+    return;
+  }
+
+  const preset = await buildInteractively(loadPreset(name));
+  savePreset(name, preset);
+  console.log(`\nSaved to ${presetPath(name)}`);
+  reportDiagnosis(name, preset);
 }
 
 function editAndValidate(name: string): void {
@@ -219,7 +288,7 @@ function cmdLaunch(name: string, passthrough: string[]): void {
   launch(name, preset, passthrough);
 }
 
-function main(argv: string[]): void {
+async function main(argv: string[]): Promise<void> {
   const [command, ...rest] = argv;
 
   if (!command || command === "help" || command === "--help" || command === "-h") {
@@ -232,22 +301,28 @@ function main(argv: string[]): void {
     return;
   }
 
+  const useEditor = rest.includes("--editor");
+  const args = rest.filter((arg) => arg !== "--editor");
+
   switch (command) {
     case "list":
       return cmdList();
     case "show":
-      return cmdShow(requireName(rest, "show"));
+      return cmdShow(requireName(args, "show"));
     case "create":
-      return cmdCreate(requireName(rest, "create"));
+      return cmdCreate(requireName(args, "create"), useEditor);
     case "edit":
-      return cmdEdit(requireName(rest, "edit"));
+      return cmdEdit(requireName(args, "edit"), useEditor);
     case "doctor":
-      return cmdDoctor(requireName(rest, "doctor"));
+      return cmdDoctor(requireName(args, "doctor"));
     case "remove":
-      return cmdRemove(requireName(rest, "remove"));
+      return cmdRemove(requireName(args, "remove"));
     default:
+      // Everything after the preset name belongs to claude, --editor included.
       return cmdLaunch(command, rest);
   }
 }
 
-main(process.argv.slice(2));
+main(process.argv.slice(2)).catch((err: unknown) => {
+  die(err instanceof Error ? err.message : String(err));
+});

@@ -40,17 +40,19 @@ use with worked examples.
 ```bash
 ccgear list                 # list presets
 ccgear show <name>          # show a preset's contents
-ccgear create <name>        # create a preset (opens $EDITOR, pre-filled)
-ccgear edit <name>          # edit an existing preset
+ccgear create <name>        # create a preset (interactive; --editor for raw JSON)
+ccgear edit <name>          # edit a preset (interactive; --editor for raw JSON)
 ccgear doctor <name>        # check for missing servers/skills/commands
 ccgear remove <name>        # delete a preset
 ccgear version              # print the installed version
 ccgear <name> [args...]     # launch Claude Code with that preset
 ```
 
-`ccgear create` pre-fills the preset with everything it can discover, so the
-job is deleting what this context does not need. Anything after the preset name
-is passed straight through to `claude`:
+`ccgear create` walks through the tools it discovers as checkbox lists, one
+kind at a time. With `--editor`, or when there is no terminal to prompt in, it
+writes a pre-filled JSON file and opens your editor instead.
+
+Anything after the preset name is passed straight through to `claude`:
 
 ```bash
 ccgear dev --model opus

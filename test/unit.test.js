@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, lstatSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as eventsModule from "node:events";
 
 process.env.CCGEAR_DIR = mkdtempSync(join(tmpdir(), "ccgear-test-"));
 
@@ -13,6 +14,7 @@ const { buildBundle } = await import("../dist/manifest.js");
 const { buildArgs } = await import("../dist/launch.js");
 const { diagnose } = await import("../dist/doctor.js");
 const { validateShape } = await import("../dist/validate.js");
+const { multiSelect, askText, parseKeys } = await import("../dist/prompt.js");
 
 test("validateName rejects reserved subcommands", () => {
   assert.match(validateName("list"), /reserved/);
@@ -248,6 +250,146 @@ test("diagnose accepts every known field", () => {
     enabledCommands: [],
   });
   assert.deepEqual(issues, []);
+});
+
+/** Stand-in for a raw-mode TTY so the prompts can be driven from a test. */
+function fakeTerminal() {
+  const input = new eventsModule.EventEmitter();
+  input.isRaw = false;
+  input.rawModeCalls = [];
+  input.setRawMode = (mode) => input.rawModeCalls.push(mode);
+  input.resume = () => {};
+  input.pause = () => {};
+
+  const output = { written: "", write: (chunk) => (output.written += chunk) };
+  const press = (key) => input.emit("data", Buffer.from(key));
+  return { input, output, press };
+}
+
+test("parseKeys splits a batched chunk into individual keys", () => {
+  // A terminal can deliver a whole typed or pasted run in one data event; a
+  // handler comparing the chunk to "\r" would miss the Enter at its end.
+  assert.deepEqual(parseKeys("hi\r"), ["h", "i", "\r"]);
+  assert.deepEqual(parseKeys(" \x1b[B\r"), [" ", "\x1b[B", "\r"]);
+  assert.deepEqual(parseKeys("\x1b[A\x1b[B"), ["\x1b[A", "\x1b[B"]);
+  assert.deepEqual(parseKeys(""), []);
+});
+
+test("multiSelect handles several keys arriving in one chunk", async () => {
+  const { input, output, press } = fakeTerminal();
+  const pending = multiSelect({
+    title: "Pick",
+    choices: ["alpha", "beta", "gamma"],
+    input,
+    output,
+  });
+
+  press(" \x1b[B\x1b[B \r"); // select alpha, move twice, select gamma, confirm
+
+  assert.deepEqual(await pending, ["alpha", "gamma"]);
+});
+
+test("askText reads a line delivered as one chunk", async () => {
+  const { input, output, press } = fakeTerminal();
+  const pending = askText("Name:", { input, output });
+  press("hello\r");
+  assert.equal(await pending, "hello");
+});
+
+test("askText supports backspace and falls back when left empty", async () => {
+  const term = fakeTerminal();
+  const typed = askText("Name:", { input: term.input, output: term.output });
+  term.press("ab");
+  term.press("\x7f");
+  term.press("\r");
+  assert.equal(await typed, "a");
+
+  const blank = fakeTerminal();
+  const defaulted = askText("Name:", {
+    input: blank.input,
+    output: blank.output,
+    fallback: "previous",
+  });
+  blank.press("\r");
+  assert.equal(await defaulted, "previous");
+});
+
+test("multiSelect toggles with space and returns in list order", async () => {
+  const { input, output, press } = fakeTerminal();
+  const pending = multiSelect({
+    title: "Pick",
+    choices: ["alpha", "beta", "gamma"],
+    input,
+    output,
+  });
+
+  press(" "); // select alpha
+  press("\x1b[B"); // down to beta
+  press("\x1b[B"); // down to gamma
+  press(" "); // select gamma
+  press("\r");
+
+  assert.deepEqual(await pending, ["alpha", "gamma"]);
+});
+
+test("multiSelect starts from the given selection and can deselect", async () => {
+  const { input, output, press } = fakeTerminal();
+  const pending = multiSelect({
+    title: "Pick",
+    choices: ["alpha", "beta"],
+    selected: ["alpha", "beta"],
+    input,
+    output,
+  });
+
+  press(" "); // deselect alpha
+  press("\r");
+
+  assert.deepEqual(await pending, ["beta"]);
+});
+
+test("multiSelect supports select-all and select-none", async () => {
+  const { input, output, press } = fakeTerminal();
+  const pending = multiSelect({ title: "Pick", choices: ["a", "b"], input, output });
+
+  press("a");
+  press("n");
+  press("a");
+  press("\r");
+
+  assert.deepEqual(await pending, ["a", "b"]);
+});
+
+test("multiSelect restores the terminal when it finishes", async () => {
+  const { input, output, press } = fakeTerminal();
+  const pending = multiSelect({ title: "Pick", choices: ["a"], input, output });
+  press("\r");
+  await pending;
+
+  assert.deepEqual(input.rawModeCalls, [true, false], "raw mode must be turned back off");
+  assert.ok(output.written.includes("\x1b[?25h"), "cursor must be made visible again");
+});
+
+test("multiSelect restores the terminal when cancelled", async () => {
+  const { input, output, press } = fakeTerminal();
+  let cancelled = false;
+  multiSelect({
+    title: "Pick",
+    choices: ["a"],
+    input,
+    output,
+    onCancel: () => (cancelled = true),
+  });
+
+  press("\x03"); // Ctrl+C
+
+  assert.ok(cancelled);
+  assert.deepEqual(input.rawModeCalls, [true, false]);
+  assert.ok(output.written.includes("\x1b[?25h"));
+});
+
+test("multiSelect skips an empty list instead of prompting", async () => {
+  assert.deepEqual(await multiSelect({ title: "Pick", choices: [] }), []);
 });
 
 test("diagnose warns about an empty preset", () => {

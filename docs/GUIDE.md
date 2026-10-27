@@ -33,43 +33,42 @@ it with `npm bin -g` and add it to your shell profile.
 
 ## Your first preset
 
-`ccgear create` opens your editor with everything it can find already filled
-in, so the work is deleting what this context does not need.
-
 ```bash
 ccgear create dev
 ```
 
-You will see something like:
+You are asked for a description, then shown a checkbox list for each kind of
+tool it found:
 
-```json
-{
-  "description": "",
-  "enabledMcpjsonServers": ["context7", "filesystem", "github", "playwright", "sentry"],
-  "enabledPlugins": ["swift-lsp@claude-plugins-official"],
-  "enabledSkills": ["ios-design", "commit", "okx-defi"],
-  "enabledCommands": []
-}
+```
+MCP servers  (2 selected)
+  ↑↓ move · space toggle · a all · n none · enter confirm
+  [ ] context7
+> [x] filesystem
+  [x] playwright
+  [ ] sentry
+  … 8 more
 ```
 
-Cut it down to what a coding session actually uses, add a description, save,
-and close the editor:
+Nothing starts selected — pick the handful this context needs. Categories with
+nothing installed are skipped. The preset is validated as soon as it is saved
+and anything that will not resolve is reported.
 
-```json
-{
-  "description": "Coding session — iOS/SwiftUI focus",
-  "enabledMcpjsonServers": ["context7", "filesystem", "playwright"],
-  "enabledPlugins": ["swift-lsp@claude-plugins-official"],
-  "enabledSkills": ["ios-design", "commit"],
-  "enabledCommands": []
-}
+### Editing raw JSON instead
+
+Pass `--editor` to skip the prompts and edit the file directly. The preset is
+pre-filled with everything discovered, so the work becomes deleting what you
+do not need:
+
+```bash
+ccgear create dev --editor
+ccgear edit dev --editor
 ```
 
-`ccgear` validates the preset as soon as you save and reports anything that
-will not resolve.
+This is also what happens automatically when there is no terminal to prompt
+in, such as in a script or CI job.
 
-`ccgear` uses `$VISUAL`, then `$EDITOR`, then falls back to `nano`. To use
-VS Code or Cursor:
+`ccgear` uses `$VISUAL`, then `$EDITOR`, then falls back to `nano`:
 
 ```bash
 export EDITOR="code"     # or: cursor
@@ -222,8 +221,8 @@ It reports:
 | --- | --- |
 | `ccgear list` | List presets with a summary of each |
 | `ccgear show <name>` | Show one preset's contents and assets path |
-| `ccgear create <name>` | Create a preset, pre-filled, in your editor |
-| `ccgear edit <name>` | Edit an existing preset |
+| `ccgear create <name>` | Create a preset (interactive; `--editor` for raw JSON) |
+| `ccgear edit <name>` | Edit a preset (interactive; `--editor` for raw JSON) |
 | `ccgear doctor <name>` | Check a preset without launching it |
 | `ccgear remove <name>` | Delete a preset (bundled assets are kept) |
 | `ccgear version` | Print the installed version |
