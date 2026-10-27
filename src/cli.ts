@@ -13,7 +13,15 @@ import { diagnose, formatIssues } from "./doctor.js";
 import { checkEnvironment } from "./environment.js";
 import { openEditor } from "./editor.js";
 import { launch } from "./launch.js";
-import { askText, multiSelect, isInteractive } from "./prompt.js";
+import { askText, multiSelect, selectOne, isInteractive } from "./prompt.js";
+import {
+  validateSlug,
+  parsePairs,
+  buildStdioServer,
+  buildHttpServer,
+  scaffoldSkill,
+  scaffoldCommand,
+} from "./add.js";
 import {
   GEAR_DIR,
   presetPath,
@@ -37,6 +45,7 @@ Usage:
   ccgear list                 List presets
   ccgear show <name>          Show a preset's contents
   ccgear create <name>        Create a preset (interactive; --editor for raw JSON)
+  ccgear add <name>           Add a new MCP server, skill, or command to a preset
   ccgear clone <from> <to>    Copy a preset, bundled assets included
   ccgear edit <name>          Edit a preset (interactive; --editor for raw JSON)
   ccgear doctor <name>        Check a preset (--deep also connects to each server)
@@ -230,6 +239,97 @@ async function cmdCreate(name: string, useEditor: boolean): Promise<void> {
   console.log(`\nLaunch it with: ccgear ${name}`);
 }
 
+async function addServer(name: string, preset: Preset): Promise<void> {
+  const alias = await askText("Server name (as Claude will see it):");
+  const slugIssue = validateSlug(alias);
+  if (slugIssue) die(slugIssue);
+  if (preset.mcpServers?.[alias] || preset.enabledMcpjsonServers?.includes(alias)) {
+    die(`'${alias}' is already in this preset.`);
+  }
+
+  const transport = await selectOne({
+    title: "How does it run?",
+    choices: ["stdio — a local command", "http — a remote endpoint"],
+  });
+
+  let definition: McpServerDefinition;
+  if (transport.startsWith("stdio")) {
+    const command = await askText("Command (e.g. npx):");
+    if (!command.trim()) die("A stdio server needs a command.");
+    const args = await askText("Arguments (space separated, blank for none):");
+    const env = await askText("Env vars as KEY=value, comma separated (blank for none):");
+    if (parsePairs(env) === null) die("Could not read those env vars. Use KEY=value,KEY2=value2.");
+    definition = buildStdioServer({ command, args, env });
+  } else {
+    const url = await askText("URL:");
+    if (!url.trim()) die("An http server needs a URL.");
+    const headers = await askText("Headers as Key=value, comma separated (blank for none):");
+    if (parsePairs(headers) === null) die("Could not read those headers. Use Key=value,Key2=value2.");
+    definition = buildHttpServer({ url, headers });
+  }
+
+  // Stored inline so the server travels with the preset.
+  preset.mcpServers = { ...preset.mcpServers, [alias]: definition };
+  savePreset(name, preset);
+  console.log(`\nAdded '${alias}' to '${name}'.`);
+
+  console.log("Connecting to check it works…");
+  const [result] = await probeAll(new Map([[alias, definition]]));
+  const mark = { ok: "✔", auth: "!", failed: "✗" } as const;
+  console.log(`  ${mark[result.status]} ${result.name}: ${result.detail}`);
+  if (result.status === "failed") {
+    console.log(`Fix it with: ccgear edit ${name} --editor`);
+  }
+}
+
+async function addSkill(name: string): Promise<void> {
+  const slug = await askText("Skill name (lowercase-with-dashes):");
+  const slugIssue = validateSlug(slug);
+  if (slugIssue) die(slugIssue);
+
+  const description = await askText("One line on when Claude should use it:");
+  const { path, created } = scaffoldSkill(name, slug, description);
+  if (!created) die(`Skill '${slug}' already exists in this preset:\n  ${path}`);
+
+  console.log(`\nCreated ${path}`);
+  if (isInteractive()) openEditor(path);
+  console.log(`'${slug}' is bundled with '${name}' — no global install needed.`);
+}
+
+async function addCommand(name: string): Promise<void> {
+  const slug = await askText("Command name (used as /name):");
+  const slugIssue = validateSlug(slug);
+  if (slugIssue) die(slugIssue);
+
+  const description = await askText("One line on what it does:");
+  const { path, created } = scaffoldCommand(name, slug, description);
+  if (!created) die(`Command '${slug}' already exists in this preset:\n  ${path}`);
+
+  console.log(`\nCreated ${path}`);
+  if (isInteractive()) openEditor(path);
+  console.log(`/${slug} is bundled with '${name}' — no global install needed.`);
+}
+
+async function cmdAdd(name: string, kind: string | undefined): Promise<void> {
+  if (!presetExists(name)) notFound(name);
+  if (!isInteractive() && !kind) {
+    die("Adding needs a terminal, or pass --server, --skill, or --command.");
+  }
+
+  const preset = loadPreset(name);
+  const chosen =
+    kind ??
+    (await selectOne({
+      title: `Add to '${name}':`,
+      choices: ["MCP server", "Skill", "Slash command"],
+    }));
+
+  if (chosen === "--server" || chosen === "MCP server") return addServer(name, preset);
+  if (chosen === "--skill" || chosen === "Skill") return addSkill(name);
+  if (chosen === "--command" || chosen === "Slash command") return addCommand(name);
+  die(`Unknown kind '${chosen}'. Use --server, --skill, or --command.`);
+}
+
 function cmdClone(from: string, to: string): void {
   if (!presetExists(from)) notFound(from);
   const invalid = validateName(to);
@@ -374,7 +474,9 @@ async function main(argv: string[]): Promise<void> {
 
   const useEditor = rest.includes("--editor");
   const deep = rest.includes("--deep");
-  const args = rest.filter((arg) => arg !== "--editor" && arg !== "--deep");
+  const args = rest.filter(
+    (arg) => !["--editor", "--deep", "--names", "--server", "--skill", "--command"].includes(arg),
+  );
 
   switch (command) {
     case "list":
@@ -383,6 +485,11 @@ async function main(argv: string[]): Promise<void> {
       return cmdShow(requireName(args, "show"));
     case "create":
       return cmdCreate(requireName(args, "create"), useEditor);
+    case "add": {
+      const target = requireName(args, "add");
+      const kind = rest.find((a) => ["--server", "--skill", "--command"].includes(a));
+      return cmdAdd(target, kind);
+    }
     case "clone": {
       const from = requireName(args, "clone <from> <to>");
       const to = args[1];

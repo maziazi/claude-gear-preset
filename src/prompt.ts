@@ -118,6 +118,88 @@ export async function askText(
   });
 }
 
+export interface SelectOneOptions {
+  title: string;
+  choices: string[];
+  input?: PromptInput;
+  output?: PromptOutput;
+  onCancel?: () => void;
+}
+
+/**
+ * Pick exactly one entry from a list.
+ *
+ * Shares the arrow-key model of `multiSelect` so both prompts feel the same,
+ * but confirms on Enter alone since there is nothing to toggle.
+ */
+export async function selectOne(options: SelectOneOptions): Promise<string> {
+  const { title, choices } = options;
+  if (choices.length === 0) throw new Error(`${title}: nothing to choose from`);
+  if (choices.length === 1) return choices[0];
+
+  const input = options.input ?? (stdin as unknown as PromptInput);
+  const output = options.output ?? (stdout as unknown as PromptOutput);
+  let cursor = 0;
+  let painted = 0;
+
+  const render = () => {
+    if (painted > 0) output.write(`${ESC}[${painted}A`);
+    const lines = [title, "  ↑↓ move · enter select"];
+    for (const [index, choice] of choices.entries()) {
+      lines.push(`${index === cursor ? ">" : " "} ${choice}`);
+    }
+    output.write(lines.map((line) => `${CLEAR_LINE}${line}`).join("\n") + "\n");
+    painted = lines.length;
+  };
+
+  const wasRaw = input.isRaw;
+  input.setRawMode(true);
+  input.resume();
+  output.write(HIDE_CURSOR);
+  render();
+
+  return new Promise<string>((resolve) => {
+    const restore = () => {
+      input.off("data", onData);
+      input.setRawMode(Boolean(wasRaw));
+      input.pause();
+      output.write(SHOW_CURSOR);
+    };
+
+    const onData = (data: Buffer) => {
+      let dirty = false;
+      for (const key of parseKeys(data.toString())) {
+        switch (key) {
+          case `${ESC}[A`:
+          case "k":
+            cursor = (cursor - 1 + choices.length) % choices.length;
+            break;
+          case `${ESC}[B`:
+          case "j":
+            cursor = (cursor + 1) % choices.length;
+            break;
+          case "\r":
+          case "\n":
+            restore();
+            resolve(choices[cursor]);
+            return;
+          case "\x03":
+            restore();
+            output.write("\nCancelled.\n");
+            (options.onCancel ?? (() => process.exit(130)))();
+            return;
+          default:
+            continue;
+        }
+        dirty = true;
+      }
+      if (dirty) render();
+    };
+
+    input.on("data", onData);
+  });
+}
+
 /** Minimal shape of the streams the prompt drives, so tests can supply fakes. */
 export interface PromptInput {
   isRaw?: boolean;

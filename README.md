@@ -46,6 +46,7 @@ use with worked examples.
 ccgear list                 # list presets
 ccgear show <name>          # show a preset's contents
 ccgear create <name>        # create a preset (interactive; --editor for raw JSON)
+ccgear add <name>           # add a NEW mcp server / skill / command to a preset
 ccgear clone <from> <to>    # copy a preset, bundled assets included
 ccgear edit <name>          # edit a preset (interactive; --editor for raw JSON)
 ccgear doctor <name>        # check a preset (--deep also connects to each server)

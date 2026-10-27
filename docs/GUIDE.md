@@ -10,6 +10,7 @@ Code sessions side by side.
 - [Bundling tools into a preset](#bundling-tools-into-a-preset)
 - [Moving a preset to another machine](#moving-a-preset-to-another-machine)
 - [Checking a preset](#checking-a-preset)
+- [Adding something new](#adding-something-new)
 - [Starting from an existing preset](#starting-from-an-existing-preset)
 - [Tab completion](#tab-completion)
 - [Command reference](#command-reference)
@@ -251,6 +252,54 @@ which makes `--deep` usable as a check in a script.
 No model is involved and nothing is billed: the probe sends the MCP
 `initialize` handshake and reads the reply.
 
+## Adding something new
+
+`create` and `edit` pick from what is already installed. `add` creates
+something that does not exist yet, stored inside the preset so it travels
+with it:
+
+```bash
+ccgear add dev
+```
+
+It asks what kind, then walks through the details.
+
+### A new MCP server
+
+```
+Server name (as Claude will see it): my-api
+How does it run?
+> stdio — a local command
+  http — a remote endpoint
+Command (e.g. npx): npx
+Arguments (space separated, blank for none): -y @scope/my-mcp-server
+Env vars as KEY=value, comma separated (blank for none): API_KEY=abc123
+
+Added 'my-api' to 'dev'.
+Connecting to check it works…
+  ✔ my-api: connected — my-server 1.0.0
+```
+
+The server is written into the preset's `mcpServers`, and `ccgear` connects to
+it straight away so a typo in the command surfaces now rather than mid-session.
+
+### A new skill or slash command
+
+```bash
+ccgear add dev --skill      # or: --command
+```
+
+You give it a name and a one-line description; `ccgear` writes the file with
+valid frontmatter already in place and opens your editor on it:
+
+```
+Created /Users/you/.claude/gear/dev/skills/review-checklist/SKILL.md
+'review-checklist' is bundled with 'dev' — no global install needed.
+```
+
+Nothing is installed globally, so the skill exists only for this preset and
+moves with it. Skip the prompts with `--server`, `--skill`, or `--command`.
+
 ## Starting from an existing preset
 
 `clone` copies a preset and its bundled assets, which is usually faster than
@@ -283,6 +332,7 @@ Subcommands and preset names both complete. Restart the shell afterwards.
 | `ccgear list` | List presets with a summary of each (`--names` for bare names) |
 | `ccgear show <name>` | Show one preset's contents and assets path |
 | `ccgear create <name>` | Create a preset (interactive; `--editor` for raw JSON) |
+| `ccgear add <name>` | Add a new MCP server, skill, or command to a preset |
 | `ccgear clone <from> <to>` | Copy a preset, bundled assets included |
 | `ccgear edit <name>` | Edit a preset (interactive; `--editor` for raw JSON) |
 | `ccgear doctor <name>` | Check a preset; `--deep` also connects to each server |
