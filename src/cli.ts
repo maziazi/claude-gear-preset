@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { discoverAll, listSkillsIn, listCommandsIn } from "./discover.js";
+import {
+  discoverAll,
+  discoverMcpServers,
+  listSkillsIn,
+  listCommandsIn,
+} from "./discover.js";
+import { probeAll } from "./probe.js";
 import { diagnose, formatIssues } from "./doctor.js";
 import { checkEnvironment } from "./environment.js";
 import { openEditor } from "./editor.js";
@@ -22,7 +28,7 @@ import {
   savePreset,
   validateName,
 } from "./preset.js";
-import type { Preset } from "./types.js";
+import type { Preset, McpServerDefinition } from "./types.js";
 
 const HELP = `ccgear - bundle MCP servers, skills, and slash commands into named presets
 
@@ -31,7 +37,7 @@ Usage:
   ccgear show <name>          Show a preset's contents
   ccgear create <name>        Create a preset (interactive; --editor for raw JSON)
   ccgear edit <name>          Edit a preset (interactive; --editor for raw JSON)
-  ccgear doctor <name>        Check a preset for missing servers/skills/commands
+  ccgear doctor <name>        Check a preset (--deep also connects to each server)
   ccgear remove <name>        Delete a preset
   ccgear version              Print the installed version
   ccgear <name> [args...]     Launch Claude Code with that preset
@@ -245,9 +251,37 @@ function editAndValidate(name: string): void {
   reportDiagnosis(name, preset);
 }
 
-function cmdDoctor(name: string): void {
+async function cmdDoctor(name: string, deep: boolean): Promise<void> {
   if (!presetExists(name)) notFound(name);
-  reportDiagnosis(name, loadPreset(name));
+  const preset = loadPreset(name);
+  reportDiagnosis(name, preset);
+  if (!deep) return;
+
+  // Resolve the same way a launch would, so what gets probed is what would
+  // actually connect.
+  const discovered = discoverMcpServers();
+  const servers = new Map<string, McpServerDefinition>();
+  for (const alias of preset.enabledMcpjsonServers ?? []) {
+    const def = discovered.get(alias);
+    if (def) servers.set(alias, def);
+  }
+  for (const [alias, def] of Object.entries(preset.mcpServers ?? {})) {
+    servers.set(alias, def);
+  }
+
+  if (servers.size === 0) {
+    console.log("\nNo MCP servers to connect to.");
+    return;
+  }
+
+  console.log(`\nConnecting to ${servers.size} server(s)…`);
+  const results = await probeAll(servers);
+  const mark = { ok: "✔", auth: "!", failed: "✗" } as const;
+  for (const result of results.sort((a, b) => a.name.localeCompare(b.name))) {
+    console.log(`  ${mark[result.status]} ${result.name}: ${result.detail}`);
+  }
+
+  if (results.some((r) => r.status === "failed")) process.exitCode = 1;
 }
 
 function cmdRemove(name: string): void {
@@ -302,7 +336,8 @@ async function main(argv: string[]): Promise<void> {
   }
 
   const useEditor = rest.includes("--editor");
-  const args = rest.filter((arg) => arg !== "--editor");
+  const deep = rest.includes("--deep");
+  const args = rest.filter((arg) => arg !== "--editor" && arg !== "--deep");
 
   switch (command) {
     case "list":
@@ -314,7 +349,7 @@ async function main(argv: string[]): Promise<void> {
     case "edit":
       return cmdEdit(requireName(args, "edit"), useEditor);
     case "doctor":
-      return cmdDoctor(requireName(args, "doctor"));
+      return cmdDoctor(requireName(args, "doctor"), deep);
     case "remove":
       return cmdRemove(requireName(args, "remove"));
     default:

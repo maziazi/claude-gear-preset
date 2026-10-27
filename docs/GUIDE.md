@@ -215,6 +215,34 @@ It reports:
 
 `create` and `edit` run this automatically when you save.
 
+### Actually connecting
+
+The checks above read files. A definition can be perfectly well-formed while
+the binary is missing, the token has expired, or the endpoint is down. Add
+`--deep` to open a real MCP session with each server:
+
+```bash
+ccgear doctor dev --deep
+```
+
+```
+✔ No issues found.
+
+Connecting to 3 server(s)…
+  ✔ context7: connected — Context7 4.4.3
+  ✔ filesystem: connected — secure-filesystem-server 2.0.1
+  ! sentry: needs authentication (HTTP 401)
+  ✗ my-api: command not found: my-mcp-server
+```
+
+Servers are probed in parallel, so this usually takes a second or two. A
+server needing authentication is marked `!` rather than `✗` — sign in once
+with `claude mcp login <name>`. `ccgear` exits non-zero if anything failed,
+which makes `--deep` usable as a check in a script.
+
+No model is involved and nothing is billed: the probe sends the MCP
+`initialize` handshake and reads the reply.
+
 ## Command reference
 
 | Command | What it does |
@@ -223,7 +251,7 @@ It reports:
 | `ccgear show <name>` | Show one preset's contents and assets path |
 | `ccgear create <name>` | Create a preset (interactive; `--editor` for raw JSON) |
 | `ccgear edit <name>` | Edit a preset (interactive; `--editor` for raw JSON) |
-| `ccgear doctor <name>` | Check a preset without launching it |
+| `ccgear doctor <name>` | Check a preset; `--deep` also connects to each server |
 | `ccgear remove <name>` | Delete a preset (bundled assets are kept) |
 | `ccgear version` | Print the installed version |
 | `ccgear <name> [args...]` | Launch Claude Code with that preset |
@@ -274,9 +302,9 @@ and `--plugin-dir`.
 command must be a `.md` file. Referenced ones are looked up in
 `~/.claude/skills/` and `~/.claude/commands/`.
 
-**A server is listed but never connects** — `doctor` only checks that a
-definition exists, not that it works. A server needing OAuth has to be signed
-in once with `claude mcp login <name>`.
+**A server is listed but never connects** — run `ccgear doctor <name> --deep`,
+which connects to each one and says why. A server needing OAuth has to be
+signed in once with `claude mcp login <name>`.
 
 **Everything from my global setup still loads** — make sure you launched
 through `ccgear <name>` and not plain `claude`.

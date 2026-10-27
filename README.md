@@ -42,7 +42,7 @@ ccgear list                 # list presets
 ccgear show <name>          # show a preset's contents
 ccgear create <name>        # create a preset (interactive; --editor for raw JSON)
 ccgear edit <name>          # edit a preset (interactive; --editor for raw JSON)
-ccgear doctor <name>        # check for missing servers/skills/commands
+ccgear doctor <name>        # check a preset (--deep also connects to each server)
 ccgear remove <name>        # delete a preset
 ccgear version              # print the installed version
 ccgear <name> [args...]     # launch Claude Code with that preset
