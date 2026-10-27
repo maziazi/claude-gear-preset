@@ -37,3 +37,35 @@ jobs:
         run: |
           node dist/cli.js --help
           node dist/cli.js list
+
+  verify-dist:
+    name: dist/ matches source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Fail if dist/ was not rebuilt before committing
+        run: git diff --exit-code dist/
+
+  install-smoke:
+    name: install without devDependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # Packs exactly what a git- or registry-based install receives: no
+      # build step runs here, since dist/ is already committed.
+      - run: npm pack
+      - name: Install globally with no devDependencies present
+        run: npm install -g --omit=dev ./claude-gear-preset-*.tgz
+      - name: Run the installed binary
+        run: |
+          ccgear --help
+          ccgear list

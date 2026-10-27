@@ -12,8 +12,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "test": "node --test",
-    "prepare": "npm run build"
+    "test": "node --test"
   },
   "engines": {
     "node": ">=20"
