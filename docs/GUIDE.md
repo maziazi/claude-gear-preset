@@ -21,8 +21,14 @@ Code sessions side by side.
 Requires [Claude Code](https://claude.com/claude-code) and Node 20 or newer.
 
 ```bash
-npm install -g github:maziazi/claude-gear-preset
+npm install -g https://github.com/maziazi/claude-gear-preset/archive/refs/heads/main.tar.gz
 ```
+
+Use that tarball URL, not `github:maziazi/claude-gear-preset` — a bug in npm's
+git-dependency caching ([npm/cli#5170](https://github.com/npm/cli/issues/5170))
+can leave the installed files symlinked to a temp directory npm then deletes,
+so the command exists but points at nothing. Installing from the tarball URL
+avoids that code path.
 
 Check it:
 
@@ -318,6 +324,15 @@ Globally installed tools are read from, never written to:
 
 **`ccgear: command not found`** — the global npm bin directory is not on
 `PATH`. Find it with `npm bin -g`.
+
+**`ccgear` exists but running it fails, or `which ccgear` shows a broken
+symlink** — you likely installed with `github:maziazi/claude-gear-preset`
+instead of the tarball URL. Remove it and reinstall from the tarball:
+
+```bash
+npm uninstall -g claude-gear-preset
+npm install -g https://github.com/maziazi/claude-gear-preset/archive/refs/heads/main.tar.gz
+```
 
 **`'claude' not found on PATH`** — install Claude Code, or make sure the
 `claude` binary is reachable from the shell you launch `ccgear` in.

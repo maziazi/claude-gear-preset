@@ -27,10 +27,15 @@ process between you and your tools, and no single point of failure.
 ## Install
 
 ```bash
-npm install -g github:maziazi/claude-gear-preset
+npm install -g https://github.com/maziazi/claude-gear-preset/archive/refs/heads/main.tar.gz
 ```
 
 Requires Node 20+ and [Claude Code](https://claude.com/claude-code).
+
+Use the tarball URL above, not `github:maziazi/claude-gear-preset` — npm's
+git-dependency caching has a bug ([npm/cli#5170](https://github.com/npm/cli/issues/5170))
+that can leave the installed package symlinked to a temp directory it then
+deletes, breaking the command. The tarball URL skips that code path entirely.
 
 New to it? The [guide](docs/GUIDE.md) walks through install, setup, and daily
 use with worked examples.

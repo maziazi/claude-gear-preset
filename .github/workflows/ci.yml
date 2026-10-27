@@ -69,3 +69,25 @@ jobs:
         run: |
           ccgear --help
           ccgear list
+
+  install-from-readme:
+    # Only on push to main: needs GitHub's generated tarball for this exact
+    # commit, which a PR from a fork cannot be assumed to produce reliably.
+    if: github.event_name == 'push'
+    name: install command from the README actually works
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # npm's github: / git+https: protocols have a caching bug
+      # (npm/cli#5170) that can symlink the install to a temp directory it
+      # then deletes. The README recommends the archive tarball URL
+      # specifically to avoid that, which is the one thing this job exists
+      # to keep true.
+      - name: Install exactly as the README instructs
+        run: npm install -g "https://github.com/${{ github.repository }}/archive/${{ github.sha }}.tar.gz"
+      - name: Run the installed binary
+        run: |
+          ccgear --help
+          ccgear list
