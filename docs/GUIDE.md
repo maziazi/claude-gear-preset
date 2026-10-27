@@ -10,6 +10,7 @@ Code sessions side by side.
   - [When a server is not ready in time](#when-a-server-is-not-ready-in-time)
 - [Bundling tools into a preset](#bundling-tools-into-a-preset)
 - [Moving a preset to another machine](#moving-a-preset-to-another-machine)
+- [Terminal integration](#terminal-integration)
 - [Checking a preset](#checking-a-preset)
 - [Adding something new](#adding-something-new)
 - [Starting from an existing preset](#starting-from-an-existing-preset)
@@ -154,6 +155,31 @@ Two overrides, rarely needed:
 ccgear dev --warm      # connect first even if it was warmed before
 ccgear dev --no-warm   # skip it and start immediately
 ```
+
+## Terminal integration
+
+Two things depend on plugins that live in your user-scope settings — which is
+exactly what `ccgear` drops to isolate a session. List them in the preset and
+they come back:
+
+```json
+{ "enabledPlugins": ["warp@claude-code-warp"] }
+```
+
+Without that, a Warp tab shows a plain terminal icon and no notification when
+Claude asks you something, because the plugin that emits those is switched
+off. `ccgear create` offers your installed plugins in the checkbox list; keep
+the terminal one selected.
+
+The tab is also renamed as you work:
+
+```
+dev - pengembangan ccgear
+```
+
+The preset name comes first, then what you last asked about. Claude Code on
+its own titles every tab `✳ Claude Code`, which is no help once several are
+open.
 
 ## Bundling tools into a preset
 

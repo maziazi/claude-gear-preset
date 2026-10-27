@@ -7,7 +7,7 @@ import {
   presetSkillsDir,
   presetCommandsDir,
 } from "./paths.js";
-import { listSkillsIn, listCommandsIn } from "./discover.js";
+import { listSkillsIn, listCommandsIn, resolvePluginDir } from "./discover.js";
 import type { Preset, McpServerDefinition } from "./types.js";
 
 /**
@@ -39,6 +39,8 @@ function copyCommand(target: string, path: string): void {
 export interface BuiltBundle {
   /** Temp dir passed to --plugin-dir, or null when the preset has no skills/commands. */
   pluginDir: string | null;
+  /** Install directories of enabled plugins, each passed to --plugin-dir. */
+  extraPluginDirs: string[];
   /** Temp file passed to --mcp-config. */
   mcpConfigPath: string;
   /** Temp file passed to --settings, or null when the preset enables no plugins. */
@@ -86,8 +88,8 @@ export function buildBundle(
   const mcpConfigPath = join(root, "mcp-config.json");
   writeFileSync(mcpConfigPath, JSON.stringify({ mcpServers }, null, 2));
 
-  // Plugins are toggled through a settings overlay rather than --plugin-dir,
-  // because they are already installed; we only flip them on for this session.
+  // Plugins get both treatments: the overlay marks them enabled for the
+  // session, and the directories below actually load them.
   let settingsPath: string | null = null;
   const pluginIds = preset.enabledPlugins ?? [];
   if (pluginIds.length > 0) {
@@ -95,6 +97,13 @@ export function buildBundle(
     settingsPath = join(root, "settings.json");
     writeFileSync(settingsPath, JSON.stringify({ enabledPlugins }, null, 2));
   }
+
+  // The settings overlay alone is not enough: --setting-sources drops
+  // user-scope settings, which is where these plugins are installed, so they
+  // stay switched off. Pointing --plugin-dir at each one loads it anyway.
+  const extraPluginDirs = pluginIds
+    .map((id) => resolvePluginDir(id))
+    .filter((dir): dir is string => dir !== null);
 
   // Local assets win over global ones of the same name: a preset that ships
   // its own copy of a skill means to use that copy.
@@ -117,7 +126,7 @@ export function buildBundle(
   const cleanup = () => rmSync(root, { recursive: true, force: true });
 
   if (skillEntries.size === 0 && commandEntries.size === 0) {
-    return { pluginDir: null, mcpConfigPath, settingsPath, cleanup };
+    return { pluginDir: null, extraPluginDirs, mcpConfigPath, settingsPath, cleanup };
   }
 
   const pluginDir = join(root, "bundle");
@@ -152,5 +161,5 @@ export function buildBundle(
     JSON.stringify(manifest, null, 2),
   );
 
-  return { pluginDir, mcpConfigPath, settingsPath, cleanup };
+  return { pluginDir, extraPluginDirs, mcpConfigPath, settingsPath, cleanup };
 }

@@ -7,6 +7,7 @@ export const CLAUDE_JSON = join(home, ".claude.json");
 export const CLAUDE_SETTINGS = join(home, ".claude", "settings.json");
 export const USER_SKILLS_DIR = join(home, ".claude", "skills");
 export const USER_COMMANDS_DIR = join(home, ".claude", "commands");
+export const PLUGINS_DIR = join(home, ".claude", "plugins");
 export const PLUGIN_CACHE_DIR = join(home, ".claude", "plugins", "cache");
 export const PLUGIN_MARKETPLACES_DIR = join(home, ".claude", "plugins", "marketplaces");
 export function presetPath(name) {

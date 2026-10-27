@@ -5,6 +5,7 @@ import {
   CLAUDE_SETTINGS,
   USER_SKILLS_DIR,
   USER_COMMANDS_DIR,
+  PLUGINS_DIR,
   PLUGIN_CACHE_DIR,
   PLUGIN_MARKETPLACES_DIR,
 } from "./paths.js";
@@ -129,6 +130,28 @@ export function discoverAll(cwd = process.cwd()): Discovered {
     skills: discoverSkills(),
     commands: discoverCommands(),
   };
+}
+
+/**
+ * Find where an installed plugin lives on disk.
+ *
+ * `--setting-sources project,local` drops user-scope settings, which is what
+ * isolates skills — but it also switches off plugins installed there. Passing
+ * the directory to `--plugin-dir` loads the plugin regardless, so a preset can
+ * keep terminal integrations working without giving up isolation.
+ */
+export function resolvePluginDir(id: string): string | null {
+  const installed = readJson(join(PLUGINS_DIR, "installed_plugins.json"));
+  const entries = installed?.plugins?.[id];
+  if (!Array.isArray(entries)) return null;
+
+  for (const entry of entries) {
+    const path = entry?.installPath;
+    if (typeof path === "string" && existsSync(join(path, ".claude-plugin"))) {
+      return path;
+    }
+  }
+  return null;
 }
 
 export function skillExists(name: string): boolean {

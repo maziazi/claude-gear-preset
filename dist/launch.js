@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { startTitleWatcher } from "./title.js";
 import { buildBundle } from "./manifest.js";
 import { discoverMcpServers } from "./discover.js";
 /**
@@ -21,6 +23,8 @@ export function buildArgs(name, bundle, passthrough) {
         args.push("--settings", bundle.settingsPath);
     if (bundle.pluginDir)
         args.push("--plugin-dir", bundle.pluginDir);
+    for (const dir of bundle.extraPluginDirs ?? [])
+        args.push("--plugin-dir", dir);
     args.push("-n", name);
     return args.concat(passthrough);
 }
@@ -46,12 +50,21 @@ export function parseLaunchArgs(args) {
 }
 export function launch(name, preset, passthrough) {
     const bundle = buildBundle(name, preset, discoverMcpServers());
-    const args = buildArgs(name, bundle, passthrough);
+    // Naming the session ourselves is what makes the transcript findable, and
+    // so the tab title trackable. If the caller set one, theirs wins.
+    const hasOwnSessionId = passthrough.includes("--session-id");
+    const sessionId = hasOwnSessionId ? null : randomUUID();
+    const withSession = sessionId ? [...passthrough, "--session-id", sessionId] : passthrough;
+    const args = buildArgs(name, bundle, withSession);
+    const stopTitle = sessionId
+        ? startTitleWatcher(name, sessionId, process.cwd())
+        : () => { };
     let cleanedUp = false;
     const cleanup = () => {
         if (cleanedUp)
             return;
         cleanedUp = true;
+        stopTitle();
         bundle.cleanup();
     };
     const child = spawn("claude", args, { stdio: "inherit" });
