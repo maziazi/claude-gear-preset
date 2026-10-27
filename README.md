@@ -66,6 +66,8 @@ Presets are JSON files in `~/.claude/gear/` (override with `$CCGEAR_DIR`).
 }
 ```
 
+These fields reference things already installed on the machine:
+
 | Field | Source |
 | --- | --- |
 | `enabledMcpjsonServers` | `~/.claude.json`, `~/.claude/settings.json`, `.mcp.json` walked up from the cwd, plugin caches |
@@ -73,11 +75,46 @@ Presets are JSON files in `~/.claude/gear/` (override with `$CCGEAR_DIR`).
 | `enabledSkills` | directory names under `~/.claude/skills/` |
 | `enabledCommands` | `*.md` basenames under `~/.claude/commands/` |
 
+## Self-contained presets
+
+A preset can also carry its own tools, so it works on a machine where nothing
+is installed globally — useful for moving a setup between machines or sharing
+one with someone else.
+
+Give the preset a folder next to its JSON file. Anything inside is bundled
+automatically; there is nothing to list:
+
+```
+~/.claude/gear/
+├── portable.json
+└── portable/
+    ├── skills/
+    │   └── vault-rules/SKILL.md
+    └── commands/
+        └── standup.md
+```
+
+MCP servers travel the same way, as full definitions under `mcpServers`:
+
+```json
+{
+  "description": "Fully self-contained",
+  "mcpServers": {
+    "my-api": { "command": "npx", "args": ["-y", "my-mcp-server"] }
+  }
+}
+```
+
+The two styles mix freely. When a bundled asset and a referenced one share a
+name, the bundled copy wins — shipping your own version means you meant to use
+it. `ccgear show` marks bundled entries so you can tell them apart.
+
+To move a preset to another machine, copy `<name>.json` and `<name>/` together.
+
 ## How it works
 
 On launch, `ccgear` builds a temp directory containing an MCP config and a
-synthetic plugin whose `skills/` and `commands/` entries are symlinks to your
-real ones, then runs:
+synthetic plugin holding the preset's skills and commands, then runs:
 
 ```bash
 claude --mcp-config <temp>/mcp-config.json \
@@ -98,6 +135,11 @@ Each flag does one necessary thing:
 Temp files are deleted when the session exits. Nothing is written to your
 settings, and because each preset is just another `claude` process, running
 several at once needs no coordination.
+
+Skill directories are symlinked so large folders cost nothing to include, with
+a copy as fallback on Windows, where symlinks need Developer Mode. Command
+files are always copied: Claude Code's loader skips symlinked `.md` files, so
+a linked command would silently never appear.
 
 ## Trade-offs
 

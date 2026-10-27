@@ -1,6 +1,12 @@
 /** A named bundle of MCP servers, skills, and slash commands. */
 export interface Preset {
   description?: string;
+  /**
+   * Full MCP server definitions owned by this preset. Unlike
+   * `enabledMcpjsonServers`, these need nothing installed globally, which makes
+   * a preset portable between machines.
+   */
+  mcpServers?: Record<string, McpServerDefinition>;
   /** MCP server aliases, resolved against discovered definitions at launch. */
   enabledMcpjsonServers?: string[];
   /** Plugin ids in `name@marketplace` form. */

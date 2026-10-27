@@ -1,10 +1,16 @@
 #!/usr/bin/env node
-import { discoverAll } from "./discover.js";
+import { discoverAll, listSkillsIn, listCommandsIn } from "./discover.js";
 import { diagnose, formatIssues } from "./doctor.js";
 import { checkEnvironment } from "./environment.js";
 import { openEditor } from "./editor.js";
 import { launch } from "./launch.js";
-import { GEAR_DIR, presetPath } from "./paths.js";
+import {
+  GEAR_DIR,
+  presetPath,
+  presetAssetsDir,
+  presetSkillsDir,
+  presetCommandsDir,
+} from "./paths.js";
 import {
   listPresets,
   loadPreset,
@@ -49,7 +55,7 @@ function notFound(name: string): never {
 }
 
 function reportDiagnosis(name: string, preset: Preset): void {
-  const issues = [...checkEnvironment(), ...diagnose(preset)];
+  const issues = [...checkEnvironment(), ...diagnose(preset, name)];
   if (issues.length === 0) {
     console.log("✔ No issues found.");
     return;
@@ -69,10 +75,13 @@ function cmdList(): void {
     let summary = "";
     try {
       const preset = loadPreset(name);
+      const union = (named: string[] = [], local: string[] = []) =>
+        new Set([...named, ...local]).size;
+
       const counts = [
-        `${preset.enabledMcpjsonServers?.length ?? 0} MCP`,
-        `${preset.enabledSkills?.length ?? 0} skills`,
-        `${preset.enabledCommands?.length ?? 0} commands`,
+        `${union(preset.enabledMcpjsonServers, Object.keys(preset.mcpServers ?? {}))} MCP`,
+        `${union(preset.enabledSkills, listSkillsIn(presetSkillsDir(name)))} skills`,
+        `${union(preset.enabledCommands, listCommandsIn(presetCommandsDir(name)))} commands`,
       ].join(", ");
       summary = preset.description ? `${preset.description} (${counts})` : `(${counts})`;
     } catch {
@@ -85,18 +94,31 @@ function cmdList(): void {
 function cmdShow(name: string): void {
   if (!presetExists(name)) notFound(name);
   const preset = loadPreset(name);
-  const section = (label: string, items: string[] = []) => {
-    console.log(`\n${label} (${items.length}):`);
-    if (items.length === 0) console.log("  (none)");
-    else for (const item of items) console.log(`  ${item}`);
+  const localSkills = listSkillsIn(presetSkillsDir(name));
+  const localCommands = listCommandsIn(presetCommandsDir(name));
+
+  const section = (label: string, items: string[] = [], owned: string[] = []) => {
+    const all = [
+      ...items.filter((i) => !owned.includes(i)).map((i) => i),
+      ...owned.map((i) => `${i}  (bundled)`),
+    ];
+    console.log(`\n${label} (${all.length}):`);
+    if (all.length === 0) console.log("  (none)");
+    else for (const item of all) console.log(`  ${item}`);
   };
 
   console.log(`Preset : ${name}`);
   console.log(`Desc   : ${preset.description || "(none)"}`);
-  section("MCP servers", preset.enabledMcpjsonServers);
+  console.log(`Assets : ${presetAssetsDir(name)}`);
+  section(
+    "MCP servers",
+    preset.enabledMcpjsonServers,
+    Object.keys(preset.mcpServers ?? {}),
+  );
   section("Plugins", preset.enabledPlugins);
-  section("Skills", preset.enabledSkills);
-  section("Commands", preset.enabledCommands);
+  section("Skills", preset.enabledSkills, localSkills);
+  section("Commands", preset.enabledCommands, localCommands);
+  console.log("\n(bundled) entries travel with the preset — no global install needed.");
 }
 
 function cmdCreate(name: string): void {
@@ -149,8 +171,21 @@ function cmdDoctor(name: string): void {
 
 function cmdRemove(name: string): void {
   if (!presetExists(name)) notFound(name);
+
+  const bundled =
+    listSkillsIn(presetSkillsDir(name)).length +
+    listCommandsIn(presetCommandsDir(name)).length;
+
   removePreset(name);
   console.log(`Removed preset '${name}'.`);
+
+  // Bundled assets are hand-written files; deleting them silently would throw
+  // away work the preset file does not contain.
+  if (bundled > 0) {
+    console.log(
+      `Kept ${bundled} bundled asset(s) in ${presetAssetsDir(name)} — delete that folder yourself if you no longer need them.`,
+    );
+  }
 }
 
 function cmdLaunch(name: string, passthrough: string[]): void {
@@ -163,7 +198,7 @@ function cmdLaunch(name: string, passthrough: string[]): void {
     die(`Preset '${name}' is not valid JSON: ${(err as Error).message}`);
   }
 
-  const blocking = diagnose(preset).filter((i) => i.level === "error");
+  const blocking = diagnose(preset, name).filter((i) => i.level === "error");
   if (blocking.length > 0) {
     console.error(`Starting '${name}' with unresolved entries:`);
     console.error(formatIssues(blocking));

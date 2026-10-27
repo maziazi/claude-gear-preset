@@ -16,3 +16,22 @@ export const PLUGIN_MARKETPLACES_DIR = join(home, ".claude", "plugins", "marketp
 export function presetPath(name: string): string {
   return join(GEAR_DIR, `${name}.json`);
 }
+
+/**
+ * Directory holding assets that belong to one preset.
+ *
+ * Anything under `<assets>/skills` or `<assets>/commands` is bundled
+ * automatically, so a preset can carry its own tools without them being
+ * installed globally first.
+ */
+export function presetAssetsDir(name: string): string {
+  return join(GEAR_DIR, name);
+}
+
+export function presetSkillsDir(name: string): string {
+  return join(presetAssetsDir(name), "skills");
+}
+
+export function presetCommandsDir(name: string): string {
+  return join(presetAssetsDir(name), "commands");
+}

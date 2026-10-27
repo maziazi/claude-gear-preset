@@ -1,22 +1,39 @@
 import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, cpSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { USER_SKILLS_DIR, USER_COMMANDS_DIR } from "./paths.js";
+import {
+  USER_SKILLS_DIR,
+  USER_COMMANDS_DIR,
+  presetSkillsDir,
+  presetCommandsDir,
+} from "./paths.js";
+import { listSkillsIn, listCommandsIn } from "./discover.js";
 import type { Preset, McpServerDefinition } from "./types.js";
 
 /**
- * Link `target` into `path`, falling back to a copy.
+ * Link a skill directory into the bundle, falling back to a copy.
  *
  * Symlinks keep the bundle cheap and always current, but Windows refuses to
  * create them without Developer Mode or elevation. Copying loses live updates
  * for the duration of one session, which beats failing to start.
  */
-function linkOrCopy(target: string, path: string, isDirectory: boolean): void {
+function linkSkill(target: string, path: string): void {
   try {
-    symlinkSync(target, path, isDirectory ? "junction" : "file");
+    symlinkSync(target, path, "junction");
   } catch {
-    cpSync(target, path, { recursive: isDirectory, dereference: true });
+    cpSync(target, path, { recursive: true, dereference: true });
   }
+}
+
+/**
+ * Copy a command file into the bundle.
+ *
+ * Claude Code's command loader skips symlinked `.md` files — verified by
+ * placing a real file and a symlink in one directory and seeing only the real
+ * one load. Bundles are rebuilt per launch, so a copy is never stale.
+ */
+function copyCommand(target: string, path: string): void {
+  cpSync(target, path, { dereference: true });
 }
 
 export interface BuiltBundle {
@@ -29,18 +46,22 @@ export interface BuiltBundle {
   cleanup: () => void;
 }
 
-/**
- * Materialise a preset into the temp files Claude Code needs.
- *
- * Skills and commands are symlinked rather than copied so edits to the
- * originals are picked up without rebuilding, and large skill folders cost
- * nothing to "include".
- */
 export interface BundleSources {
   skillsDir?: string;
   commandsDir?: string;
+  /** Preset-owned skills directory; entries here are bundled automatically. */
+  localSkillsDir?: string;
+  /** Preset-owned commands directory; entries here are bundled automatically. */
+  localCommandsDir?: string;
 }
 
+/**
+ * Materialise a preset into the temp files Claude Code needs.
+ *
+ * Entries come from two places: names referencing globally installed tools,
+ * and the preset's own `skills/` and `commands/` folders, which are picked up
+ * automatically so a preset works on a machine with nothing installed.
+ */
 export function buildBundle(
   name: string,
   preset: Preset,
@@ -49,13 +70,18 @@ export function buildBundle(
 ): BuiltBundle {
   const skillsSource = sources.skillsDir ?? USER_SKILLS_DIR;
   const commandsSource = sources.commandsDir ?? USER_COMMANDS_DIR;
+  const localSkillsSource = sources.localSkillsDir ?? presetSkillsDir(name);
+  const localCommandsSource = sources.localCommandsDir ?? presetCommandsDir(name);
   const root = mkdtempSync(join(tmpdir(), `ccgear-${name}-`));
 
+  // Globally installed servers first, then the preset's own definitions, so a
+  // preset can override a global alias with its own version.
   const mcpServers: Record<string, McpServerDefinition> = {};
   for (const alias of preset.enabledMcpjsonServers ?? []) {
     const def = servers.get(alias);
     if (def) mcpServers[alias] = def;
   }
+  Object.assign(mcpServers, preset.mcpServers ?? {});
 
   const mcpConfigPath = join(root, "mcp-config.json");
   writeFileSync(mcpConfigPath, JSON.stringify({ mcpServers }, null, 2));
@@ -70,11 +96,27 @@ export function buildBundle(
     writeFileSync(settingsPath, JSON.stringify({ enabledPlugins }, null, 2));
   }
 
-  const skills = preset.enabledSkills ?? [];
-  const commands = preset.enabledCommands ?? [];
+  // Local assets win over global ones of the same name: a preset that ships
+  // its own copy of a skill means to use that copy.
+  const skillEntries = new Map<string, string>();
+  for (const skill of preset.enabledSkills ?? []) {
+    skillEntries.set(skill, join(skillsSource, skill));
+  }
+  for (const skill of listSkillsIn(localSkillsSource)) {
+    skillEntries.set(skill, join(localSkillsSource, skill));
+  }
+
+  const commandEntries = new Map<string, string>();
+  for (const command of preset.enabledCommands ?? []) {
+    commandEntries.set(command, join(commandsSource, `${command}.md`));
+  }
+  for (const command of listCommandsIn(localCommandsSource)) {
+    commandEntries.set(command, join(localCommandsSource, `${command}.md`));
+  }
+
   const cleanup = () => rmSync(root, { recursive: true, force: true });
 
-  if (skills.length === 0 && commands.length === 0) {
+  if (skillEntries.size === 0 && commandEntries.size === 0) {
     return { pluginDir: null, mcpConfigPath, settingsPath, cleanup };
   }
 
@@ -87,24 +129,20 @@ export function buildBundle(
     description: preset.description || `ccgear preset '${name}'`,
   };
 
-  if (skills.length > 0) {
+  if (skillEntries.size > 0) {
     const skillsDir = join(pluginDir, "skills");
     mkdirSync(skillsDir, { recursive: true });
-    for (const skill of skills) {
-      linkOrCopy(join(skillsSource, skill), join(skillsDir, skill), true);
+    for (const [skill, source] of skillEntries) {
+      linkSkill(source, join(skillsDir, skill));
     }
     manifest.skills = "./skills/";
   }
 
-  if (commands.length > 0) {
+  if (commandEntries.size > 0) {
     const commandsDir = join(pluginDir, "commands");
     mkdirSync(commandsDir, { recursive: true });
-    for (const command of commands) {
-      linkOrCopy(
-        join(commandsSource, `${command}.md`),
-        join(commandsDir, `${command}.md`),
-        false,
-      );
+    for (const [command, source] of commandEntries) {
+      copyCommand(source, join(commandsDir, `${command}.md`));
     }
     manifest.commands = "./commands/";
   }

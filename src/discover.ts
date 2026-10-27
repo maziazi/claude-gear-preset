@@ -95,21 +95,31 @@ function discoverPlugins(): string[] {
   return Object.keys(enabled).sort();
 }
 
-/** Skill directory names under ~/.claude/skills (symlinks included). */
-export function discoverSkills(): string[] {
-  return listDirs(USER_SKILLS_DIR).sort();
+/** Skill directory names in any skills folder (symlinks included). */
+export function listSkillsIn(dir: string): string[] {
+  return listDirs(dir).sort();
 }
 
-/** Command names (basename without .md) under ~/.claude/commands. */
-export function discoverCommands(): string[] {
+/** Command names (basename without .md) in any commands folder. */
+export function listCommandsIn(dir: string): string[] {
   try {
-    return readdirSync(USER_COMMANDS_DIR)
+    return readdirSync(dir)
       .filter((f) => f.endsWith(".md"))
       .map((f) => parse(f).name)
       .sort();
   } catch {
     return [];
   }
+}
+
+/** Skill directory names under ~/.claude/skills. */
+export function discoverSkills(): string[] {
+  return listSkillsIn(USER_SKILLS_DIR);
+}
+
+/** Command names under ~/.claude/commands. */
+export function discoverCommands(): string[] {
+  return listCommandsIn(USER_COMMANDS_DIR);
 }
 
 export function discoverAll(cwd = process.cwd()): Discovered {

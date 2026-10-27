@@ -47,7 +47,7 @@ test("buildBundle writes only the servers the preset names", () => {
   bundle.cleanup();
 });
 
-test("buildBundle symlinks skills and commands into a synthetic plugin", () => {
+test("buildBundle bundles skills and commands into a synthetic plugin", () => {
   const fixture = mkdtempSync(join(tmpdir(), "ccgear-fixture-"));
   const skillsDir = join(fixture, "skills");
   const commandsDir = join(fixture, "commands");
@@ -70,11 +70,21 @@ test("buildBundle symlinks skills and commands into a synthetic plugin", () => {
   assert.equal(manifest.skills, "./skills/");
   assert.equal(manifest.commands, "./commands/");
   assert.ok(lstatSync(join(bundle.pluginDir, "skills", "my-skill")).isSymbolicLink());
-  assert.ok(lstatSync(join(bundle.pluginDir, "commands", "my-cmd.md")).isSymbolicLink());
   assert.equal(
     readFileSync(join(bundle.pluginDir, "skills", "my-skill", "SKILL.md"), "utf8"),
     "# skill",
     "symlink should resolve to the real skill content",
+  );
+
+  // Claude Code's command loader skips symlinked .md files, so these must be
+  // real files or the slash commands silently never appear.
+  assert.ok(
+    lstatSync(join(bundle.pluginDir, "commands", "my-cmd.md")).isFile(),
+    "command files must be copies, not symlinks",
+  );
+  assert.equal(
+    readFileSync(join(bundle.pluginDir, "commands", "my-cmd.md"), "utf8"),
+    "# command",
   );
 
   bundle.cleanup();
@@ -111,6 +121,92 @@ test("buildArgs omits optional flags when the preset has none", () => {
   );
   assert.ok(!args.includes("--plugin-dir"));
   assert.ok(!args.includes("--settings"));
+});
+
+test("buildBundle merges inline servers over global aliases", () => {
+  const global = new Map([["shared", { command: "global-version" }]]);
+  const bundle = buildBundle(
+    "t",
+    {
+      enabledMcpjsonServers: ["shared"],
+      mcpServers: {
+        shared: { command: "preset-version" },
+        "preset-only": { command: "standalone" },
+      },
+    },
+    global,
+  );
+
+  const written = JSON.parse(readFileSync(bundle.mcpConfigPath, "utf8"));
+  assert.equal(
+    written.mcpServers.shared.command,
+    "preset-version",
+    "a preset's own definition should win over the global one",
+  );
+  assert.equal(written.mcpServers["preset-only"].command, "standalone");
+  bundle.cleanup();
+});
+
+test("buildBundle picks up preset-owned skills and commands without a global install", () => {
+  const assets = mkdtempSync(join(tmpdir(), "ccgear-assets-"));
+  const localSkillsDir = join(assets, "skills");
+  const localCommandsDir = join(assets, "commands");
+  mkdirSync(join(localSkillsDir, "bundled-skill"), { recursive: true });
+  mkdirSync(localCommandsDir, { recursive: true });
+  writeFileSync(join(localSkillsDir, "bundled-skill", "SKILL.md"), "# bundled");
+  writeFileSync(join(localCommandsDir, "bundled-cmd.md"), "# bundled cmd");
+
+  // Nothing is listed in the preset and no global dirs are provided.
+  const bundle = buildBundle("t", {}, new Map(), {
+    skillsDir: "/nonexistent-global-skills",
+    commandsDir: "/nonexistent-global-commands",
+    localSkillsDir,
+    localCommandsDir,
+  });
+
+  assert.ok(bundle.pluginDir, "bundled assets alone should produce a plugin dir");
+  assert.equal(
+    readFileSync(join(bundle.pluginDir, "skills", "bundled-skill", "SKILL.md"), "utf8"),
+    "# bundled",
+  );
+  assert.equal(
+    readFileSync(join(bundle.pluginDir, "commands", "bundled-cmd.md"), "utf8"),
+    "# bundled cmd",
+  );
+
+  bundle.cleanup();
+  rmSync(assets, { recursive: true, force: true });
+});
+
+test("buildBundle prefers a preset-owned skill over a global one of the same name", () => {
+  const fixture = mkdtempSync(join(tmpdir(), "ccgear-collide-"));
+  const globalSkills = join(fixture, "global");
+  const localSkillsDir = join(fixture, "local");
+  mkdirSync(join(globalSkills, "shared"), { recursive: true });
+  mkdirSync(join(localSkillsDir, "shared"), { recursive: true });
+  writeFileSync(join(globalSkills, "shared", "SKILL.md"), "global");
+  writeFileSync(join(localSkillsDir, "shared", "SKILL.md"), "local");
+
+  const bundle = buildBundle("t", { enabledSkills: ["shared"] }, new Map(), {
+    skillsDir: globalSkills,
+    localSkillsDir,
+  });
+
+  assert.equal(
+    readFileSync(join(bundle.pluginDir, "skills", "shared", "SKILL.md"), "utf8"),
+    "local",
+  );
+
+  bundle.cleanup();
+  rmSync(fixture, { recursive: true, force: true });
+});
+
+test("diagnose accepts a preset defined entirely inline", () => {
+  const issues = diagnose({
+    enabledMcpjsonServers: ["my-api"],
+    mcpServers: { "my-api": { command: "npx", args: ["-y", "some-server"] } },
+  });
+  assert.deepEqual(issues, [], "an inline definition should satisfy the lookup");
 });
 
 test("diagnose flags servers that no config defines", () => {

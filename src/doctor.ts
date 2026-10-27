@@ -1,4 +1,11 @@
-import { discoverAll, skillExists, commandExists } from "./discover.js";
+import {
+  discoverAll,
+  skillExists,
+  commandExists,
+  listSkillsIn,
+  listCommandsIn,
+} from "./discover.js";
+import { presetSkillsDir, presetCommandsDir } from "./paths.js";
 import type { DoctorIssue, Preset } from "./types.js";
 
 /**
@@ -7,15 +14,27 @@ import type { DoctorIssue, Preset } from "./types.js";
  * names a server that was removed from the Claude config — Claude Code itself
  * stays silent about those.
  */
-export function diagnose(preset: Preset, cwd = process.cwd()): DoctorIssue[] {
+export function diagnose(
+  preset: Preset,
+  name?: string,
+  cwd = process.cwd(),
+): DoctorIssue[] {
   const issues: DoctorIssue[] = [];
   const { mcpServers, plugins } = discoverAll(cwd);
 
   const servers = preset.enabledMcpjsonServers ?? [];
+  const inlineServers = Object.keys(preset.mcpServers ?? {});
   const skills = preset.enabledSkills ?? [];
   const commands = preset.enabledCommands ?? [];
 
+  // Preset-owned assets need no global install, so they count towards the
+  // "is this preset empty?" check below.
+  const localSkills = name ? listSkillsIn(presetSkillsDir(name)) : [];
+  const localCommands = name ? listCommandsIn(presetCommandsDir(name)) : [];
+
   for (const alias of servers) {
+    // An inline definition supersedes the global lookup.
+    if (preset.mcpServers?.[alias]) continue;
     if (!mcpServers.has(alias)) {
       issues.push({
         level: "error",
@@ -34,6 +53,7 @@ export function diagnose(preset: Preset, cwd = process.cwd()): DoctorIssue[] {
   }
 
   for (const skill of skills) {
+    if (localSkills.includes(skill)) continue;
     if (!skillExists(skill)) {
       issues.push({
         level: "error",
@@ -43,6 +63,7 @@ export function diagnose(preset: Preset, cwd = process.cwd()): DoctorIssue[] {
   }
 
   for (const command of commands) {
+    if (localCommands.includes(command)) continue;
     if (!commandExists(command)) {
       issues.push({
         level: "error",
@@ -51,7 +72,15 @@ export function diagnose(preset: Preset, cwd = process.cwd()): DoctorIssue[] {
     }
   }
 
-  if (servers.length === 0 && skills.length === 0 && commands.length === 0) {
+  const total =
+    servers.length +
+    inlineServers.length +
+    skills.length +
+    commands.length +
+    localSkills.length +
+    localCommands.length;
+
+  if (total === 0) {
     issues.push({
       level: "warn",
       message: "Preset is empty — the session will start with built-in tools only.",
