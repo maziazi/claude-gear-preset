@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { discoverAll, listSkillsIn, listCommandsIn } from "./discover.js";
 import { diagnose, formatIssues } from "./doctor.js";
 import { checkEnvironment } from "./environment.js";
@@ -30,6 +32,7 @@ Usage:
   ccgear edit <name>          Edit an existing preset
   ccgear doctor <name>        Check a preset for missing servers/skills/commands
   ccgear remove <name>        Delete a preset
+  ccgear version              Print the installed version
   ccgear <name> [args...]     Launch Claude Code with that preset
 
 Presets live in ${GEAR_DIR} (override with $CCGEAR_DIR).
@@ -38,6 +41,15 @@ Extra args after the preset name are passed straight to claude.`;
 function die(message: string): never {
   console.error(message);
   process.exit(1);
+}
+
+function readVersion(): string {
+  try {
+    const path = fileURLToPath(new URL("../package.json", import.meta.url));
+    return JSON.parse(readFileSync(path, "utf8")).version ?? "unknown";
+  } catch {
+    return "unknown";
+  }
 }
 
 function requireName(args: string[], subcommand: string): string {
@@ -212,6 +224,11 @@ function main(argv: string[]): void {
 
   if (!command || command === "help" || command === "--help" || command === "-h") {
     console.log(HELP);
+    return;
+  }
+
+  if (command === "version" || command === "--version" || command === "-v") {
+    console.log(readVersion());
     return;
   }
 

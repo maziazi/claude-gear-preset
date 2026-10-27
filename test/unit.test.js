@@ -12,6 +12,7 @@ const { validateName, savePreset, loadPreset, listPresets, removePreset } = awai
 const { buildBundle } = await import("../dist/manifest.js");
 const { buildArgs } = await import("../dist/launch.js");
 const { diagnose } = await import("../dist/doctor.js");
+const { validateShape } = await import("../dist/validate.js");
 
 test("validateName rejects reserved subcommands", () => {
   assert.match(validateName("list"), /reserved/);
@@ -216,6 +217,37 @@ test("diagnose flags servers that no config defines", () => {
       (i) => i.level === "error" && i.message.includes("definitely-not-a-real-server"),
     ),
   );
+});
+
+test("diagnose catches a misspelled field instead of ignoring it", () => {
+  const issues = diagnose({ enabledSkill: ["ios-design"] });
+  assert.equal(issues.length, 1);
+  assert.match(issues[0].message, /enabledSkill.*did you mean 'enabledSkills'/);
+});
+
+test("diagnose rejects a string where an array belongs", () => {
+  // Without this check the string is iterated character by character and
+  // reported as a dozen missing one-letter servers.
+  const issues = diagnose({ enabledMcpjsonServers: "context7" });
+  assert.equal(issues.length, 1);
+  assert.match(issues[0].message, /must be an array of strings, got string/);
+});
+
+test("diagnose rejects a non-object preset", () => {
+  assert.match(diagnose([])[0].message, /must be a JSON object/);
+  assert.match(diagnose(null)[0].message, /must be a JSON object/);
+});
+
+test("diagnose accepts every known field", () => {
+  const issues = validateShape({
+    description: "ok",
+    mcpServers: { a: { command: "x" } },
+    enabledMcpjsonServers: [],
+    enabledPlugins: [],
+    enabledSkills: [],
+    enabledCommands: [],
+  });
+  assert.deepEqual(issues, []);
 });
 
 test("diagnose warns about an empty preset", () => {

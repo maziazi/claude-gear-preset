@@ -32,6 +32,9 @@ npm install -g github:maziazi/claude-gear-preset
 
 Requires Node 20+ and [Claude Code](https://claude.com/claude-code).
 
+New to it? The [guide](docs/GUIDE.md) walks through install, setup, and daily
+use with worked examples.
+
 ## Usage
 
 ```bash
@@ -41,6 +44,7 @@ ccgear create <name>        # create a preset (opens $EDITOR, pre-filled)
 ccgear edit <name>          # edit an existing preset
 ccgear doctor <name>        # check for missing servers/skills/commands
 ccgear remove <name>        # delete a preset
+ccgear version              # print the installed version
 ccgear <name> [args...]     # launch Claude Code with that preset
 ```
 
@@ -146,6 +150,11 @@ a linked command would silently never appear.
 Each preset is a distinct prompt prefix, so each keeps its own cache lineage.
 Work in blocks — finish in one preset before switching — rather than hopping
 between presets every few minutes.
+
+## Documentation
+
+- [Guide](docs/GUIDE.md) — install, setup, bundling, moving presets between
+  machines, troubleshooting
 
 ## Prior art
 

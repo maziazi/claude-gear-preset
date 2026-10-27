@@ -6,6 +6,7 @@ import {
   listCommandsIn,
 } from "./discover.js";
 import { presetSkillsDir, presetCommandsDir } from "./paths.js";
+import { validateShape } from "./validate.js";
 import type { DoctorIssue, Preset } from "./types.js";
 
 /**
@@ -19,6 +20,11 @@ export function diagnose(
   name?: string,
   cwd = process.cwd(),
 ): DoctorIssue[] {
+  // A malformed preset makes every check below meaningless — a string in place
+  // of an array would be reported one character at a time — so stop here.
+  const shapeIssues = validateShape(preset);
+  if (shapeIssues.length > 0) return shapeIssues;
+
   const issues: DoctorIssue[] = [];
   const { mcpServers, plugins } = discoverAll(cwd);
 
