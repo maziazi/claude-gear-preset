@@ -10,6 +10,8 @@ Code sessions side by side.
 - [Bundling tools into a preset](#bundling-tools-into-a-preset)
 - [Moving a preset to another machine](#moving-a-preset-to-another-machine)
 - [Checking a preset](#checking-a-preset)
+- [Starting from an existing preset](#starting-from-an-existing-preset)
+- [Tab completion](#tab-completion)
 - [Command reference](#command-reference)
 - [Where things live](#where-things-live)
 - [Troubleshooting](#troubleshooting)
@@ -243,17 +245,44 @@ which makes `--deep` usable as a check in a script.
 No model is involved and nothing is billed: the probe sends the MCP
 `initialize` handshake and reads the reply.
 
+## Starting from an existing preset
+
+`clone` copies a preset and its bundled assets, which is usually faster than
+building a near-identical one from scratch:
+
+```bash
+ccgear clone dev dev-backend
+ccgear edit dev-backend
+```
+
+## Tab completion
+
+```bash
+# zsh — add to a directory on your $fpath
+ccgear completion zsh > ~/.zfunc/_ccgear
+
+# bash
+ccgear completion bash >> ~/.bashrc
+
+# fish
+ccgear completion fish > ~/.config/fish/completions/ccgear.fish
+```
+
+Subcommands and preset names both complete. Restart the shell afterwards.
+
 ## Command reference
 
 | Command | What it does |
 | --- | --- |
-| `ccgear list` | List presets with a summary of each |
+| `ccgear list` | List presets with a summary of each (`--names` for bare names) |
 | `ccgear show <name>` | Show one preset's contents and assets path |
 | `ccgear create <name>` | Create a preset (interactive; `--editor` for raw JSON) |
+| `ccgear clone <from> <to>` | Copy a preset, bundled assets included |
 | `ccgear edit <name>` | Edit a preset (interactive; `--editor` for raw JSON) |
 | `ccgear doctor <name>` | Check a preset; `--deep` also connects to each server |
 | `ccgear remove <name>` | Delete a preset (bundled assets are kept) |
 | `ccgear version` | Print the installed version |
+| `ccgear completion <shell>` | Print a completion script (bash, zsh, fish) |
 | `ccgear <name> [args...]` | Launch Claude Code with that preset |
 
 Preset names may use letters, digits, `-` and `_`, and cannot shadow a

@@ -8,11 +8,13 @@ export const RESERVED_NAMES = new Set([
   "list",
   "show",
   "create",
+  "clone",
   "edit",
   "remove",
   "doctor",
   "help",
   "version",
+  "completion",
 ]);
 
 const NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/;
@@ -42,11 +44,26 @@ export function presetExists(name: string): boolean {
   return listPresets().includes(name);
 }
 
+/**
+ * Read a preset, reporting where the problem is.
+ *
+ * A bare JSON parser error ("Expected double-quoted property name at position
+ * 47") gives no clue which of several presets is broken or which file to open.
+ */
 export function loadPreset(name: string): Preset {
-  const raw = readFileSync(presetPath(name), "utf8");
-  const parsed = JSON.parse(raw);
+  const path = presetPath(name);
+  const raw = readFileSync(path, "utf8");
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(`Preset '${name}' is not valid JSON: ${detail}\n  ${path}`);
+  }
+
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error(`Preset '${name}' is not a JSON object.`);
+    throw new Error(`Preset '${name}' must be a JSON object.\n  ${path}`);
   }
   return parsed as Preset;
 }

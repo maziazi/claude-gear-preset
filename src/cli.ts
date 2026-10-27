@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync, cpSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   discoverAll,
@@ -8,6 +8,7 @@ import {
   listCommandsIn,
 } from "./discover.js";
 import { probeAll } from "./probe.js";
+import { completionScript, SUPPORTED_SHELLS, type Shell } from "./completion.js";
 import { diagnose, formatIssues } from "./doctor.js";
 import { checkEnvironment } from "./environment.js";
 import { openEditor } from "./editor.js";
@@ -36,10 +37,12 @@ Usage:
   ccgear list                 List presets
   ccgear show <name>          Show a preset's contents
   ccgear create <name>        Create a preset (interactive; --editor for raw JSON)
+  ccgear clone <from> <to>    Copy a preset, bundled assets included
   ccgear edit <name>          Edit a preset (interactive; --editor for raw JSON)
   ccgear doctor <name>        Check a preset (--deep also connects to each server)
   ccgear remove <name>        Delete a preset
   ccgear version              Print the installed version
+  ccgear completion <shell>   Print a completion script (bash, zsh, fish)
   ccgear <name> [args...]     Launch Claude Code with that preset
 
 Presets live in ${GEAR_DIR} (override with $CCGEAR_DIR).
@@ -84,8 +87,15 @@ function reportDiagnosis(name: string, preset: Preset): void {
   console.log(formatIssues(issues));
 }
 
-function cmdList(): void {
+function cmdList(namesOnly: boolean): void {
   const presets = listPresets();
+
+  // Bare names feed shell completion, where any decoration would be noise.
+  if (namesOnly) {
+    for (const name of presets) console.log(name);
+    return;
+  }
+
   if (presets.length === 0) {
     console.log("No presets yet. Create one with: ccgear create <name>");
     return;
@@ -220,6 +230,33 @@ async function cmdCreate(name: string, useEditor: boolean): Promise<void> {
   console.log(`\nLaunch it with: ccgear ${name}`);
 }
 
+function cmdClone(from: string, to: string): void {
+  if (!presetExists(from)) notFound(from);
+  const invalid = validateName(to);
+  if (invalid) die(invalid);
+  if (presetExists(to)) {
+    die(`Preset '${to}' already exists. Pick another name or remove it first.`);
+  }
+
+  savePreset(to, loadPreset(from));
+
+  // Bundled assets belong to the preset, so a copy is only a copy with them.
+  const assets = presetAssetsDir(from);
+  if (existsSync(assets)) {
+    cpSync(assets, presetAssetsDir(to), { recursive: true, dereference: true });
+    console.log(`Copied bundled assets to ${presetAssetsDir(to)}`);
+  }
+
+  console.log(`Cloned '${from}' to '${to}'. Edit it with: ccgear edit ${to}`);
+}
+
+function cmdCompletion(shell: string | undefined): void {
+  if (!shell || !SUPPORTED_SHELLS.includes(shell as Shell)) {
+    die(`Usage: ccgear completion <${SUPPORTED_SHELLS.join("|")}>`);
+  }
+  console.log(completionScript(shell as Shell));
+}
+
 async function cmdEdit(name: string, useEditor: boolean): Promise<void> {
   if (!presetExists(name)) notFound(name);
 
@@ -341,11 +378,19 @@ async function main(argv: string[]): Promise<void> {
 
   switch (command) {
     case "list":
-      return cmdList();
+      return cmdList(rest.includes("--names"));
     case "show":
       return cmdShow(requireName(args, "show"));
     case "create":
       return cmdCreate(requireName(args, "create"), useEditor);
+    case "clone": {
+      const from = requireName(args, "clone <from> <to>");
+      const to = args[1];
+      if (!to) die("Usage: ccgear clone <from> <to>");
+      return cmdClone(from, to);
+    }
+    case "completion":
+      return cmdCompletion(args[0]);
     case "edit":
       return cmdEdit(requireName(args, "edit"), useEditor);
     case "doctor":

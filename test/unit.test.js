@@ -15,6 +15,7 @@ const { buildArgs } = await import("../dist/launch.js");
 const { diagnose } = await import("../dist/doctor.js");
 const { validateShape } = await import("../dist/validate.js");
 const { multiSelect, askText, parseKeys } = await import("../dist/prompt.js");
+const { completionScript, SUPPORTED_SHELLS } = await import("../dist/completion.js");
 
 test("validateName rejects reserved subcommands", () => {
   assert.match(validateName("list"), /reserved/);
@@ -35,6 +36,36 @@ test("presets round-trip through disk", () => {
   assert.ok(listPresets().includes("roundtrip"));
   removePreset("roundtrip");
   assert.ok(!listPresets().includes("roundtrip"));
+});
+
+test("loadPreset names the preset and file when the JSON is broken", () => {
+  // A bare parser error gives no clue which preset is at fault.
+  writeFileSync(join(process.env.CCGEAR_DIR, "broken.json"), '{"a":1,}');
+  assert.throws(() => loadPreset("broken"), (err) => {
+    assert.match(err.message, /Preset 'broken' is not valid JSON/);
+    assert.match(err.message, /broken\.json/);
+    return true;
+  });
+});
+
+test("loadPreset rejects a JSON value that is not an object", () => {
+  writeFileSync(join(process.env.CCGEAR_DIR, "arr.json"), "[1,2]");
+  assert.throws(() => loadPreset("arr"), /must be a JSON object/);
+});
+
+test("completion scripts mention every subcommand they complete", () => {
+  for (const shell of SUPPORTED_SHELLS) {
+    const script = completionScript(shell);
+    for (const sub of ["list", "show", "create", "clone", "edit", "doctor", "remove"]) {
+      assert.ok(script.includes(sub), `${shell} script should offer '${sub}'`);
+    }
+    assert.ok(script.includes("ccgear list --names"), `${shell} should source preset names`);
+  }
+});
+
+test("clone and completion cannot be used as preset names", () => {
+  assert.match(validateName("clone"), /reserved/);
+  assert.match(validateName("completion"), /reserved/);
 });
 
 test("buildBundle writes only the servers the preset names", () => {
