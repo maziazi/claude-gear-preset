@@ -7,6 +7,7 @@ Code sessions side by side.
 - [Your first preset](#your-first-preset)
 - [Running presets](#running-presets)
 - [Running several at once](#running-several-at-once)
+  - [When a server is not ready in time](#when-a-server-is-not-ready-in-time)
 - [Bundling tools into a preset](#bundling-tools-into-a-preset)
 - [Moving a preset to another machine](#moving-a-preset-to-another-machine)
 - [Checking a preset](#checking-a-preset)
@@ -117,6 +118,33 @@ coordinate. Run as many as you like.
 One caveat: each preset is a separate prompt prefix, so each keeps its own
 cache. Work in blocks — finish in one preset before switching — rather than
 hopping between presets every few minutes.
+
+### When a server is not ready in time
+
+Claude Code connects to MCP servers in the background and answers your first
+prompt without waiting for them. That is invisible in normal use — you take
+longer to type than a server takes to start — but it matters in two cases:
+
+- a `-p` one-shot that finishes in a couple of seconds
+- the first run after adding a server, when `npx` still has to download it
+
+Launching several sessions at once makes both worse, because the servers all
+start at the same moment. Measured here, three parallel cold starts of the
+same preset: two servers connected in 1.9 s and 2.3 s, and the third session
+never got its server at all.
+
+`--warm` connects to every server first, then starts the session:
+
+```bash
+ccgear dev --warm
+```
+
+The same three parallel cold starts with `--warm`: 0.56 s, 0.58 s, 0.65 s, all
+three connected. The waiting happens once, up front, where you can see it.
+
+Worth using the first time you launch after adding a server, and when starting
+several sessions together. Once a server's package is cached, a normal launch
+is already fast enough that `--warm` buys little.
 
 ## Bundling tools into a preset
 
@@ -339,7 +367,7 @@ Subcommands and preset names both complete. Restart the shell afterwards.
 | `ccgear remove <name>` | Delete a preset (bundled assets are kept) |
 | `ccgear version` | Print the installed version |
 | `ccgear completion <shell>` | Print a completion script (bash, zsh, fish) |
-| `ccgear <name> [args...]` | Launch Claude Code with that preset |
+| `ccgear <name> [args...]` | Launch Claude Code with that preset (`--warm` connects to servers first) |
 
 Preset names may use letters, digits, `-` and `_`, and cannot shadow a
 subcommand above.

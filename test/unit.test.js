@@ -11,7 +11,7 @@ const { validateName, savePreset, loadPreset, listPresets, removePreset } = awai
   "../dist/preset.js"
 );
 const { buildBundle } = await import("../dist/manifest.js");
-const { buildArgs } = await import("../dist/launch.js");
+const { buildArgs, parseLaunchArgs } = await import("../dist/launch.js");
 const { diagnose } = await import("../dist/doctor.js");
 const { validateShape } = await import("../dist/validate.js");
 const { multiSelect, askText, parseKeys } = await import("../dist/prompt.js");
@@ -155,6 +155,23 @@ test("buildArgs omits optional flags when the preset has none", () => {
   );
   assert.ok(!args.includes("--plugin-dir"));
   assert.ok(!args.includes("--settings"));
+});
+
+test("parseLaunchArgs keeps ccgear's own flags out of claude's arguments", () => {
+  // --warm tells ccgear to connect first; claude would reject it as unknown.
+  const parsed = parseLaunchArgs(["--warm", "--model", "opus"]);
+  assert.deepEqual(parsed.passthrough, ["--model", "opus"]);
+  assert.equal(parsed.warm, true);
+});
+
+test("parseLaunchArgs forwards everything it does not claim", () => {
+  const parsed = parseLaunchArgs(["--model", "opus", "-p", "hello"]);
+  assert.deepEqual(parsed.passthrough, ["--model", "opus", "-p", "hello"]);
+  assert.equal(parsed.warm, false);
+});
+
+test("parseLaunchArgs handles no arguments at all", () => {
+  assert.deepEqual(parseLaunchArgs([]), { passthrough: [], warm: false });
 });
 
 test("buildBundle merges inline servers over global aliases", () => {

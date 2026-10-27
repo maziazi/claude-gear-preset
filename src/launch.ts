@@ -31,6 +31,25 @@ export function buildArgs(
   return args.concat(passthrough);
 }
 
+/** Flags ccgear acts on itself rather than handing to claude. */
+const CCGEAR_LAUNCH_FLAGS = new Set(["--warm"]);
+
+/**
+ * Split launch arguments into ccgear's own flags and claude's.
+ *
+ * Everything unrecognised is forwarded untouched, so `ccgear dev --model opus`
+ * keeps working without ccgear knowing what `--model` means.
+ */
+export function parseLaunchArgs(args: string[]): {
+  passthrough: string[];
+  warm: boolean;
+} {
+  return {
+    passthrough: args.filter((arg) => !CCGEAR_LAUNCH_FLAGS.has(arg)),
+    warm: args.includes("--warm"),
+  };
+}
+
 export function launch(name: string, preset: Preset, passthrough: string[]): void {
   const bundle = buildBundle(name, preset, discoverMcpServers());
   const args = buildArgs(name, bundle, passthrough);

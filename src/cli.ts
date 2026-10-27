@@ -12,7 +12,7 @@ import { completionScript, SUPPORTED_SHELLS, type Shell } from "./completion.js"
 import { diagnose, formatIssues } from "./doctor.js";
 import { checkEnvironment } from "./environment.js";
 import { openEditor } from "./editor.js";
-import { launch } from "./launch.js";
+import { launch, parseLaunchArgs } from "./launch.js";
 import { askText, multiSelect, selectOne, isInteractive } from "./prompt.js";
 import {
   validateSlug,
@@ -53,6 +53,7 @@ Usage:
   ccgear version              Print the installed version
   ccgear completion <shell>   Print a completion script (bash, zsh, fish)
   ccgear <name> [args...]     Launch Claude Code with that preset
+                              (--warm connects to servers first)
 
 Presets live in ${GEAR_DIR} (override with $CCGEAR_DIR).
 Extra args after the preset name are passed straight to claude.`;
@@ -394,17 +395,7 @@ async function cmdDoctor(name: string, deep: boolean): Promise<void> {
   reportDiagnosis(name, preset);
   if (!deep) return;
 
-  // Resolve the same way a launch would, so what gets probed is what would
-  // actually connect.
-  const discovered = discoverMcpServers();
-  const servers = new Map<string, McpServerDefinition>();
-  for (const alias of preset.enabledMcpjsonServers ?? []) {
-    const def = discovered.get(alias);
-    if (def) servers.set(alias, def);
-  }
-  for (const [alias, def] of Object.entries(preset.mcpServers ?? {})) {
-    servers.set(alias, def);
-  }
+  const servers = resolveServers(preset);
 
   if (servers.size === 0) {
     console.log("\nNo MCP servers to connect to.");
@@ -440,7 +431,29 @@ function cmdRemove(name: string): void {
   }
 }
 
-function cmdLaunch(name: string, passthrough: string[]): void {
+/**
+ * Resolve a preset's servers the same way a launch does.
+ *
+ * Shared with `doctor --deep` so what gets probed is what would connect.
+ */
+function resolveServers(preset: Preset): Map<string, McpServerDefinition> {
+  const discovered = discoverMcpServers();
+  const servers = new Map<string, McpServerDefinition>();
+  for (const alias of preset.enabledMcpjsonServers ?? []) {
+    const def = discovered.get(alias);
+    if (def) servers.set(alias, def);
+  }
+  for (const [alias, def] of Object.entries(preset.mcpServers ?? {})) {
+    servers.set(alias, def);
+  }
+  return servers;
+}
+
+async function cmdLaunch(
+  name: string,
+  passthrough: string[],
+  warm: boolean,
+): Promise<void> {
   if (!presetExists(name)) notFound(name);
 
   let preset: Preset;
@@ -454,6 +467,22 @@ function cmdLaunch(name: string, passthrough: string[]): void {
   if (blocking.length > 0) {
     console.error(`Starting '${name}' with unresolved entries:`);
     console.error(formatIssues(blocking));
+  }
+
+  // Claude Code connects to MCP servers in the background and answers the
+  // first prompt without waiting, so a server still downloading its package
+  // can miss the session entirely. Connecting once here pays that cost up
+  // front, where it is visible, instead of silently losing tools.
+  if (warm) {
+    const servers = resolveServers(preset);
+    if (servers.size > 0) {
+      console.log(`Warming ${servers.size} server(s)…`);
+      const results = await probeAll(servers);
+      const mark = { ok: "✔", auth: "!", failed: "✗" } as const;
+      for (const result of results.sort((a, b) => a.name.localeCompare(b.name))) {
+        if (result.status !== "ok") console.log(`  ${mark[result.status]} ${result.name}: ${result.detail}`);
+      }
+    }
   }
 
   launch(name, preset, passthrough);
@@ -504,9 +533,11 @@ async function main(argv: string[]): Promise<void> {
       return cmdDoctor(requireName(args, "doctor"), deep);
     case "remove":
       return cmdRemove(requireName(args, "remove"));
-    default:
-      // Everything after the preset name belongs to claude, --editor included.
-      return cmdLaunch(command, rest);
+    default: {
+      // Everything ccgear does not claim for itself belongs to claude.
+      const { passthrough, warm } = parseLaunchArgs(rest);
+      return cmdLaunch(command, passthrough, warm);
+    }
   }
 }
 
