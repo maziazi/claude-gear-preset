@@ -135,6 +135,37 @@ export function resolvePluginDir(id) {
     }
     return null;
 }
+/**
+ * Does this plugin only wire up the environment?
+ *
+ * A plugin that ships hooks and nothing else — no skills, commands, agents or
+ * MCP servers — cannot add anything to the model's context. Terminal
+ * integrations are built this way: they react to session events to draw a tab
+ * icon or raise a notification.
+ */
+export function isEnvironmentPlugin(dir) {
+    if (!existsSync(join(dir, "hooks")))
+        return false;
+    const manifest = readJson(join(dir, ".claude-plugin", "plugin.json")) ?? {};
+    const contributes = ["skills", "commands", "agents", "mcpServers", "lspServers"];
+    if (contributes.some((key) => manifest[key] !== undefined))
+        return false;
+    return !["skills", "commands", "agents"].some((sub) => existsSync(join(dir, sub)))
+        && !existsSync(join(dir, ".mcp.json"));
+}
+/**
+ * Install directories of enabled plugins that only wire up the environment.
+ *
+ * These are loaded into every session rather than being chosen per preset:
+ * leaving a terminal integration out costs the notification and the tab icon,
+ * and including it costs nothing.
+ */
+export function discoverEnvironmentPlugins() {
+    return discoverPlugins()
+        .map((id) => ({ id, dir: resolvePluginDir(id) }))
+        .filter((entry) => entry.dir !== null)
+        .filter((entry) => isEnvironmentPlugin(entry.dir));
+}
 export function skillExists(name) {
     const path = join(USER_SKILLS_DIR, name);
     try {

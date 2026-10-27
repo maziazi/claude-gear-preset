@@ -158,18 +158,19 @@ ccgear dev --no-warm   # skip it and start immediately
 
 ## Terminal integration
 
-Two things depend on plugins that live in your user-scope settings — which is
-exactly what `ccgear` drops to isolate a session. List them in the preset and
-they come back:
+Terminal integrations — the Warp plugin and anything like it — keep working
+in every preset. Nothing to configure.
 
-```json
-{ "enabledPlugins": ["warp@claude-code-warp"] }
-```
+That takes explaining, because isolating a session means dropping user-scope
+settings, which is where those plugins are installed. `ccgear` loads them back
+anyway, on one condition: the plugin must ship *only* hooks. Such a plugin
+reacts to session events to raise a notification or draw a tab icon, and can
+put nothing in front of the model, so including it costs no context and
+leaving it out would cost you the notification.
 
-Without that, a Warp tab shows a plain terminal icon and no notification when
-Claude asks you something, because the plugin that emits those is switched
-off. `ccgear create` offers your installed plugins in the checkbox list; keep
-the terminal one selected.
+A plugin that also brings skills, commands, agents, or MCP servers is a
+toolkit, not an integration, and stays opt-in per preset through
+`enabledPlugins`.
 
 The tab is also renamed as you work:
 

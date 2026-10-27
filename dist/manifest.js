@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, cpSync, rmSync } fr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { USER_SKILLS_DIR, USER_COMMANDS_DIR, presetSkillsDir, presetCommandsDir, } from "./paths.js";
-import { listSkillsIn, listCommandsIn, resolvePluginDir } from "./discover.js";
+import { listSkillsIn, listCommandsIn, resolvePluginDir, discoverEnvironmentPlugins, } from "./discover.js";
 /**
  * Link a skill directory into the bundle, falling back to a copy.
  *
@@ -52,21 +52,27 @@ export function buildBundle(name, preset, servers, sources = {}) {
     Object.assign(mcpServers, preset.mcpServers ?? {});
     const mcpConfigPath = join(root, "mcp-config.json");
     writeFileSync(mcpConfigPath, JSON.stringify({ mcpServers }, null, 2));
-    // Plugins get both treatments: the overlay marks them enabled for the
-    // session, and the directories below actually load them.
+    // Environment-only plugins come along whether or not the preset names them,
+    // since they add nothing to the context and leaving one out silently costs
+    // the terminal its notifications and tab icon.
+    const environment = discoverEnvironmentPlugins();
+    const pluginIds = [
+        ...new Set([...(preset.enabledPlugins ?? []), ...environment.map((p) => p.id)]),
+    ];
+    // Both halves are needed: --plugin-dir loads a plugin that --setting-sources
+    // would otherwise leave behind, and the overlay is what marks it enabled.
+    // With only the first, the plugin is present but dormant.
     let settingsPath = null;
-    const pluginIds = preset.enabledPlugins ?? [];
     if (pluginIds.length > 0) {
         const enabledPlugins = Object.fromEntries(pluginIds.map((id) => [id, true]));
         settingsPath = join(root, "settings.json");
         writeFileSync(settingsPath, JSON.stringify({ enabledPlugins }, null, 2));
     }
-    // The settings overlay alone is not enough: --setting-sources drops
-    // user-scope settings, which is where these plugins are installed, so they
-    // stay switched off. Pointing --plugin-dir at each one loads it anyway.
-    const extraPluginDirs = pluginIds
-        .map((id) => resolvePluginDir(id))
-        .filter((dir) => dir !== null);
+    const extraPluginDirs = [
+        ...new Set(pluginIds
+            .map((id) => resolvePluginDir(id))
+            .filter((dir) => dir !== null)),
+    ];
     // Local assets win over global ones of the same name: a preset that ships
     // its own copy of a skill means to use that copy.
     const skillEntries = new Map();

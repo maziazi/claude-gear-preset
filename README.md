@@ -72,6 +72,17 @@ prompt without waiting, and a server still downloading its package misses the
 session with no error. Later launches skip it. Override with `--warm` or
 `--no-warm`.
 
+## Terminal integration
+
+Plugins that ship only hooks — terminal integrations like Warp's — load in
+every session automatically, even though isolating a session otherwise drops
+them. They contribute nothing to the context, so there is no reason to make
+you choose. Plugins that also bring skills, commands, or MCP servers stay
+opt-in through `enabledPlugins`.
+
+Tabs are named `<preset> - <topic>` as you work, rather than every one of them
+reading `✳ Claude Code`.
+
 ## Preset format
 
 Presets are JSON files in `~/.claude/gear/` (override with `$CCGEAR_DIR`).
