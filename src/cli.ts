@@ -12,7 +12,8 @@ import { completionScript, SUPPORTED_SHELLS, type Shell } from "./completion.js"
 import { diagnose, formatIssues } from "./doctor.js";
 import { checkEnvironment } from "./environment.js";
 import { openEditor } from "./editor.js";
-import { launch, parseLaunchArgs } from "./launch.js";
+import { launch, parseLaunchArgs, type WarmMode } from "./launch.js";
+import { fingerprint, isWarmed, markWarmed, forgetWarmed } from "./warmstate.js";
 import { askText, multiSelect, selectOne, isInteractive } from "./prompt.js";
 import {
   validateSlug,
@@ -53,7 +54,10 @@ Usage:
   ccgear version              Print the installed version
   ccgear completion <shell>   Print a completion script (bash, zsh, fish)
   ccgear <name> [args...]     Launch Claude Code with that preset
-                              (--warm connects to servers first)
+
+Servers are connected to once, the first time a preset uses them, so the
+session does not start before they are ready. Force it with --warm, or skip
+it with --no-warm.
 
 Presets live in ${GEAR_DIR} (override with $CCGEAR_DIR).
 Extra args after the preset name are passed straight to claude.`;
@@ -420,6 +424,7 @@ function cmdRemove(name: string): void {
     listCommandsIn(presetCommandsDir(name)).length;
 
   removePreset(name);
+  forgetWarmed(name);
   console.log(`Removed preset '${name}'.`);
 
   // Bundled assets are hand-written files; deleting them silently would throw
@@ -452,7 +457,7 @@ function resolveServers(preset: Preset): Map<string, McpServerDefinition> {
 async function cmdLaunch(
   name: string,
   passthrough: string[],
-  warm: boolean,
+  warm: WarmMode,
 ): Promise<void> {
   if (!presetExists(name)) notFound(name);
 
@@ -469,20 +474,32 @@ async function cmdLaunch(
     console.error(formatIssues(blocking));
   }
 
+  const servers = resolveServers(preset);
+  const print = fingerprint(servers);
+
   // Claude Code connects to MCP servers in the background and answers the
   // first prompt without waiting, so a server still downloading its package
-  // can miss the session entirely. Connecting once here pays that cost up
-  // front, where it is visible, instead of silently losing tools.
-  if (warm) {
-    const servers = resolveServers(preset);
-    if (servers.size > 0) {
-      console.log(`Warming ${servers.size} server(s)…`);
-      const results = await probeAll(servers);
-      const mark = { ok: "✔", auth: "!", failed: "✗" } as const;
-      for (const result of results.sort((a, b) => a.name.localeCompare(b.name))) {
-        if (result.status !== "ok") console.log(`  ${mark[result.status]} ${result.name}: ${result.detail}`);
+  // can miss the session entirely. Warming pays that cost up front, where it
+  // is visible, instead of silently losing tools.
+  //
+  // Doing it automatically the first time a given set of servers is used, and
+  // never again, keeps the slow case correct without taxing every launch.
+  const shouldWarm =
+    warm === "always" ||
+    (warm === "auto" && servers.size > 0 && !isWarmed(name, print));
+
+  if (shouldWarm && servers.size > 0) {
+    console.log(`Warming ${servers.size} server(s)…`);
+    const results = await probeAll(servers);
+    const mark = { ok: "✔", auth: "!", failed: "✗" } as const;
+    for (const result of results.sort((a, b) => a.name.localeCompare(b.name))) {
+      if (result.status !== "ok") {
+        console.log(`  ${mark[result.status]} ${result.name}: ${result.detail}`);
       }
     }
+    // Recorded even when a server failed: retrying on every launch would
+    // punish the whole session for one endpoint being down.
+    markWarmed(name, print);
   }
 
   launch(name, preset, passthrough);

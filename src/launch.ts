@@ -32,7 +32,13 @@ export function buildArgs(
 }
 
 /** Flags ccgear acts on itself rather than handing to claude. */
-const CCGEAR_LAUNCH_FLAGS = new Set(["--warm"]);
+const CCGEAR_LAUNCH_FLAGS = new Set(["--warm", "--no-warm"]);
+
+/**
+ * `auto` warms only a server set that has not been used before; `always` and
+ * `never` are the explicit overrides.
+ */
+export type WarmMode = "auto" | "always" | "never";
 
 /**
  * Split launch arguments into ccgear's own flags and claude's.
@@ -42,11 +48,18 @@ const CCGEAR_LAUNCH_FLAGS = new Set(["--warm"]);
  */
 export function parseLaunchArgs(args: string[]): {
   passthrough: string[];
-  warm: boolean;
+  warm: WarmMode;
 } {
+  // An explicit --no-warm wins, so it can override a --warm from an alias.
+  const warm: WarmMode = args.includes("--no-warm")
+    ? "never"
+    : args.includes("--warm")
+      ? "always"
+      : "auto";
+
   return {
     passthrough: args.filter((arg) => !CCGEAR_LAUNCH_FLAGS.has(arg)),
-    warm: args.includes("--warm"),
+    warm,
   };
 }
 

@@ -25,7 +25,7 @@ export function buildArgs(name, bundle, passthrough) {
     return args.concat(passthrough);
 }
 /** Flags ccgear acts on itself rather than handing to claude. */
-const CCGEAR_LAUNCH_FLAGS = new Set(["--warm"]);
+const CCGEAR_LAUNCH_FLAGS = new Set(["--warm", "--no-warm"]);
 /**
  * Split launch arguments into ccgear's own flags and claude's.
  *
@@ -33,9 +33,15 @@ const CCGEAR_LAUNCH_FLAGS = new Set(["--warm"]);
  * keeps working without ccgear knowing what `--model` means.
  */
 export function parseLaunchArgs(args) {
+    // An explicit --no-warm wins, so it can override a --warm from an alias.
+    const warm = args.includes("--no-warm")
+        ? "never"
+        : args.includes("--warm")
+            ? "always"
+            : "auto";
     return {
         passthrough: args.filter((arg) => !CCGEAR_LAUNCH_FLAGS.has(arg)),
-        warm: args.includes("--warm"),
+        warm,
     };
 }
 export function launch(name, preset, passthrough) {

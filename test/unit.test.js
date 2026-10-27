@@ -161,17 +161,17 @@ test("parseLaunchArgs keeps ccgear's own flags out of claude's arguments", () =>
   // --warm tells ccgear to connect first; claude would reject it as unknown.
   const parsed = parseLaunchArgs(["--warm", "--model", "opus"]);
   assert.deepEqual(parsed.passthrough, ["--model", "opus"]);
-  assert.equal(parsed.warm, true);
+  assert.equal(parsed.warm, "always");
 });
 
 test("parseLaunchArgs forwards everything it does not claim", () => {
   const parsed = parseLaunchArgs(["--model", "opus", "-p", "hello"]);
   assert.deepEqual(parsed.passthrough, ["--model", "opus", "-p", "hello"]);
-  assert.equal(parsed.warm, false);
+  assert.equal(parsed.warm, "auto");
 });
 
 test("parseLaunchArgs handles no arguments at all", () => {
-  assert.deepEqual(parseLaunchArgs([]), { passthrough: [], warm: false });
+  assert.deepEqual(parseLaunchArgs([]), { passthrough: [], warm: "auto" });
 });
 
 test("buildBundle merges inline servers over global aliases", () => {

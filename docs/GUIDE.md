@@ -133,18 +133,27 @@ start at the same moment. Measured here, three parallel cold starts of the
 same preset: two servers connected in 1.9 s and 2.3 s, and the third session
 never got its server at all.
 
-`--warm` connects to every server first, then starts the session:
+So `ccgear` connects to a preset's servers itself, once, before handing over:
 
-```bash
-ccgear dev --warm
+```
+$ ccgear dev
+Warming 1 server(s)…
 ```
 
-The same three parallel cold starts with `--warm`: 0.56 s, 0.58 s, 0.65 s, all
+The same three parallel cold starts after that: 0.56 s, 0.58 s, 0.65 s, all
 three connected. The waiting happens once, up front, where you can see it.
 
-Worth using the first time you launch after adding a server, and when starting
-several sessions together. Once a server's package is cached, a normal launch
-is already fast enough that `--warm` buys little.
+This only happens the first time a preset uses a given set of servers. Later
+launches skip it and start immediately, so the common case pays nothing. Edit
+a server or add one and the next launch warms again — the check is over the
+server definitions themselves, not just the preset name.
+
+Two overrides, rarely needed:
+
+```bash
+ccgear dev --warm      # connect first even if it was warmed before
+ccgear dev --no-warm   # skip it and start immediately
+```
 
 ## Bundling tools into a preset
 
@@ -367,7 +376,7 @@ Subcommands and preset names both complete. Restart the shell afterwards.
 | `ccgear remove <name>` | Delete a preset (bundled assets are kept) |
 | `ccgear version` | Print the installed version |
 | `ccgear completion <shell>` | Print a completion script (bash, zsh, fish) |
-| `ccgear <name> [args...]` | Launch Claude Code with that preset (`--warm` connects to servers first) |
+| `ccgear <name> [args...]` | Launch Claude Code with that preset (servers are warmed on first use; `--warm` / `--no-warm` override) |
 
 Preset names may use letters, digits, `-` and `_`, and cannot shadow a
 subcommand above.
@@ -378,10 +387,13 @@ subcommand above.
 ~/.claude/gear/
 ├── dev.json            preset definition
 ├── research.json
-└── research/           optional, bundled assets for `research`
-    ├── skills/
-    └── commands/
+├── research/           optional, bundled assets for `research`
+│   ├── skills/
+│   └── commands/
+└── .warmed.json        which server sets have been connected to once
 ```
+
+Deleting `.warmed.json` simply means every preset warms once more.
 
 Set `$CCGEAR_DIR` to keep presets somewhere else:
 

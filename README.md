@@ -53,7 +53,7 @@ ccgear doctor <name>        # check a preset (--deep also connects to each serve
 ccgear remove <name>        # delete a preset
 ccgear version              # print the installed version
 ccgear completion <shell>   # print a completion script (bash, zsh, fish)
-ccgear <name> [args...]     # launch Claude Code with that preset (--warm connects first)
+ccgear <name> [args...]     # launch Claude Code with that preset
 ```
 
 `ccgear create` walks through the tools it discovers as checkbox lists, one
@@ -65,6 +65,12 @@ Anything after the preset name is passed straight through to `claude`:
 ```bash
 ccgear dev --model opus
 ```
+
+The first time a preset uses a given set of MCP servers, `ccgear` connects to
+them before starting the session — Claude Code otherwise answers the first
+prompt without waiting, and a server still downloading its package misses the
+session with no error. Later launches skip it. Override with `--warm` or
+`--no-warm`.
 
 ## Preset format
 
