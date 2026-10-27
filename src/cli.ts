@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { discoverAll } from "./discover.js";
 import { diagnose, formatIssues } from "./doctor.js";
+import { checkEnvironment } from "./environment.js";
 import { openEditor } from "./editor.js";
 import { launch } from "./launch.js";
 import { GEAR_DIR, presetPath } from "./paths.js";
@@ -48,7 +49,7 @@ function notFound(name: string): never {
 }
 
 function reportDiagnosis(name: string, preset: Preset): void {
-  const issues = diagnose(preset);
+  const issues = [...checkEnvironment(), ...diagnose(preset)];
   if (issues.length === 0) {
     console.log("✔ No issues found.");
     return;

@@ -1,5 +1,7 @@
 # claude-gear-preset (`ccgear`)
 
+[![CI](https://github.com/maziazi/claude-gear-preset/actions/workflows/ci.yml/badge.svg)](https://github.com/maziazi/claude-gear-preset/actions/workflows/ci.yml)
+
 Bundle MCP servers, skills, and slash commands into named presets, then launch
 focused Claude Code sessions — several at once, each with its own toolkit.
 
@@ -25,7 +27,7 @@ process between you and your tools, and no single point of failure.
 ## Install
 
 ```bash
-npm install -g github:<username>/claude-gear-preset
+npm install -g github:maziazi/claude-gear-preset
 ```
 
 Requires Node 20+ and [Claude Code](https://claude.com/claude-code).

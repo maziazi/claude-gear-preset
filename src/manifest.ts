@@ -1,8 +1,23 @@
-import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, cpSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { USER_SKILLS_DIR, USER_COMMANDS_DIR } from "./paths.js";
 import type { Preset, McpServerDefinition } from "./types.js";
+
+/**
+ * Link `target` into `path`, falling back to a copy.
+ *
+ * Symlinks keep the bundle cheap and always current, but Windows refuses to
+ * create them without Developer Mode or elevation. Copying loses live updates
+ * for the duration of one session, which beats failing to start.
+ */
+function linkOrCopy(target: string, path: string, isDirectory: boolean): void {
+  try {
+    symlinkSync(target, path, isDirectory ? "junction" : "file");
+  } catch {
+    cpSync(target, path, { recursive: isDirectory, dereference: true });
+  }
+}
 
 export interface BuiltBundle {
   /** Temp dir passed to --plugin-dir, or null when the preset has no skills/commands. */
@@ -76,7 +91,7 @@ export function buildBundle(
     const skillsDir = join(pluginDir, "skills");
     mkdirSync(skillsDir, { recursive: true });
     for (const skill of skills) {
-      symlinkSync(join(skillsSource, skill), join(skillsDir, skill));
+      linkOrCopy(join(skillsSource, skill), join(skillsDir, skill), true);
     }
     manifest.skills = "./skills/";
   }
@@ -85,9 +100,10 @@ export function buildBundle(
     const commandsDir = join(pluginDir, "commands");
     mkdirSync(commandsDir, { recursive: true });
     for (const command of commands) {
-      symlinkSync(
+      linkOrCopy(
         join(commandsSource, `${command}.md`),
         join(commandsDir, `${command}.md`),
+        false,
       );
     }
     manifest.commands = "./commands/";
